@@ -1,0 +1,71 @@
+# Guards & dirs
+- name: Fail early if required envs are missing
+  ansible.builtin.assert:
+    that:
+      - github_username | length > 0
+      - github_pat | length > 0
+      - cf_tunnel_id | length > 0
+      - cf_hostname | length > 0
+      - cf_creds_src | length > 0
+    fail_msg: "Vereiste env ontbreekt (.env niet geladen of leeg)."
+
+- name: Ensure directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - "{{ ha_stack_dir }}"
+    - "{{ ha_config_dir }}"
+    - "{{ cf_cfg_dir }}"
+
+# Config uit repo
+- name: Checkout homelab-config (HA)
+  ansible.builtin.git:
+    repo: "https://{{ github_username }}:{{ github_pat }}@github.com/{{ github_username }}/homelab-config.git"
+    dest: "{{ ha_config_dir }}"
+    version: "{{ ha_config_repo_branch }}"
+    force: yes
+    update: yes
+
+- name: Sync repo subdir to config root (if needed)
+  ansible.builtin.command:
+    cmd: rsync -a {{ ha_config_dir }}/{{ ha_config_repo_subdir }}/ {{ ha_config_dir }}/
+  when: ha_config_repo_subdir | length > 0
+
+# Cloudflared credentials: copy from controller → target
+- name: Check cloudflared creds exist on controller
+  ansible.builtin.stat:
+    path: "{{ cf_creds_src }}"
+  register: cf_creds
+  delegate_to: localhost
+  run_once: true
+
+- name: Quit if creds are missing
+  ansible.builtin.assert:
+    that: cf_creds.stat.exists
+    fail_msg: "Cloudflared creds not found on controller: {{ cf_creds_src }}"
+
+- name: Copy cloudflared credentials to target
+  ansible.builtin.copy:
+    src: "{{ cf_creds_src }}"
+    dest: "{{ cf_cfg_dir }}/{{ cf_tunnel_id }}.json"
+    mode: "0600"
+
+# Templates & stack
+- name: Render cloudflared config
+  ansible.builtin.template:
+    src: cloudflared-config.yml.j2
+    dest: "{{ cf_cfg_dir }}/config.yml"
+    mode: "0644"
+
+- name: Render docker-compose
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ ha_stack_dir }}/docker-compose.yml"
+    mode: "0644"
+
+- name: Bring up/update the stack
+  community.docker.docker_compose_v2:
+    project_src: "{{ ha_stack_dir }}"
+    state: present

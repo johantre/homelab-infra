@@ -1,0 +1,15 @@
+services:
+  {{ ha_container_name | default('homeassistant') }}:
+    image: "ghcr.io/home-assistant/home-assistant:{{ ha_version }}"
+    container_name: "{{ ha_container_name | default('homeassistant') }}"
+    privileged: true
+    restart: unless-stopped
+    volumes:
+      - "{{ ha_config_dir }}:/config"
+      - "/etc/localtime:/etc/localtime:ro"
+{% if ha_network_mode | default('host') == 'host' %}
+    network_mode: "host"
+{% else %}
+    ports:
+      - "{{ ha_host_port | default(8123) }}:8123"
+{% endif %}

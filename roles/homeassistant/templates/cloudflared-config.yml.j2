@@ -1,0 +1,6 @@
+tunnel: {{ cf_tunnel_id }}
+credentials-file: /etc/cloudflared/{{ cf_tunnel_id }}.json
+ingress:
+  - hostname: {{ cf_hostname }}
+    service: http://localhost:8123
+  - service: http_status:404

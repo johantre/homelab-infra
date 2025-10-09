@@ -1,0 +1,10 @@
+# Make sure we're not using the same paths as existing HA's running on this box
+enable_cloudflared: false            # no tunnel this time
+
+ha_container_name: homeassistant_ansible
+ha_stack_dir: /opt/ha-stack-ansible
+ha_config_dir: /opt/homeassistant-ansible/config
+
+# Do NOT run in the host-network (conflict otherwise); map to 8124
+ha_network_mode: bridge
+ha_host_port: 8124

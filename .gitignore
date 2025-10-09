@@ -1,0 +1,3 @@
+# local secrets & helpers
+.env
+*.vault-pass.txt

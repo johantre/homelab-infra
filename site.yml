@@ -1,0 +1,5 @@
+- hosts: ha
+  become: true
+  roles:
+    - docker
+    - homeassistant
