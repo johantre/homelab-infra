@@ -1,5 +1,16 @@
 - hosts: ha
+  gather_facts: false          # don't gather facts implicitly (avoids sudo)
   become: true
+  become_method: sudo
+  become_flags: "-H -S -n"
+  vars:
+    ansible_python_interpreter: /usr/bin/python3
+
+  pre_tasks:
+    - name: Gather facts without sudo (fast & reliable)
+      setup:
+      become: false
+
   roles:
     - docker
     - homeassistant

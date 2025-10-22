@@ -1,10 +1,23 @@
-# Make sure we're not using the same paths as existing HA's running on this box
-enable_cloudflared: false            # no tunnel this time
+base_dir: "{{ lookup('env','HOME') | default(ansible_env.HOME, true) }}/homelab/target"
 
-ha_container_name: homeassistant_ansible
-ha_stack_dir: /opt/ha-stack-ansible
-ha_config_dir: /opt/homeassistant-ansible/config
+ha_stack_dir:  "{{ base_dir }}/ha-stack-ansible"
+ha_config_dir: "{{ base_dir }}/homeassistant-ansible/config"
 
 # Do NOT run in the host-network (conflict otherwise); map to 8124
+ha_container_name: homeassistant_ansible
 ha_network_mode: bridge
 ha_host_port: 8124
+
+runtime_user:  "{{ lookup('env','RUNTIME_USER')  | default(ansible_user_id, true) }}"
+runtime_group: "{{ lookup('env','RUNTIME_GROUP') | default(ansible_user_gid, true) }}"
+
+# --- Cloudflared (test) – only active if enable_cloudflared: true ---
+enable_cloudflared: true  # tunnel enabled for this test
+
+cf_dir: "{{ ha_stack_dir }}/cloudflared"
+cf_tunnel_id: "{{ lookup('env','CF_TUNNEL_ID') | default('', true) }}"
+cf_hostname:  "{{ lookup('env','CF_HOSTNAME')  | default('', true) }}"
+cf_creds_src: "{{ lookup('env','CF_CREDS_SRC') | default('', true) }}"
+
+ha_project: "ha-stack-ansible"
+ha_config_repo_dir: "{{ lookup('env','HA_CONFIG_REPO') | default((ansible_env.HOME ~ '/homelab/config/homeassistant'), true) }}"

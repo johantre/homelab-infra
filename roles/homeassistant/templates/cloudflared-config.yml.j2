@@ -1,6 +1,10 @@
-tunnel: {{ cf_tunnel_id }}
-credentials-file: /etc/cloudflared/{{ cf_tunnel_id }}.json
+loglevel: info            # explicit log level (default is 'info')
+no-autoupdate: true       # avoid surprise auto-upgrades inside container
+# metrics: 0.0.0.0:49312   # optional: enable metrics endpoint inside container
 ingress:
   - hostname: {{ cf_hostname }}
-    service: http://localhost:8123
+    service: http://{{ ha_container_name | default('homeassistant') }}:8123
+    # originRequest:
+    #   connectTimeout: 10s
+    #   keepAliveTimeout: 30s
   - service: http_status:404

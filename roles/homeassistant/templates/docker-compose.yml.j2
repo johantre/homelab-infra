@@ -13,3 +13,13 @@ services:
     ports:
       - "{{ ha_host_port | default(8123) }}:8123"
 {% endif %}
+{% if enable_cloudflared | default(false) %}
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    depends_on:
+      - {{ ha_container_name | default('homeassistant') }}
+    command: tunnel --no-autoupdate run --token ${CF_TUNNEL_TOKEN}
+    environment:
+      - CF_TUNNEL_TOKEN=${CF_TUNNEL_TOKEN}
+{% endif %}

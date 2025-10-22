@@ -1,15 +1,63 @@
-# Guards & dirs
-- name: Fail early if required envs are missing
+---
+# 0) Fast, reliable facts (no sudo) to avoid stalls on "Gathering Facts"
+- name: Gather facts without sudo (fast & reliable)
+  ansible.builtin.setup:
+    gather_subset: ['min']
+  vars:
+    ansible_become: false
+
+# 1): resolve sensitive vars from either a provided .env (local) or CI env/extra-vars (pipeline)
+# 1 A) If env_file is provided → read from .env (dotenv/properties)
+- name: Load required vars from .env when env_file is provided
+  ansible.builtin.set_fact:
+    github_username: "{{ lookup('ini', 'GITHUB_USERNAME file=' + env_file + ' type=properties') }}"
+    github_pat:       "{{ lookup('ini', 'GITHUB_PAT file='       + env_file + ' type=properties') }}"
+    cf_tunnel_id:     "{{ lookup('ini', 'CF_TUNNEL_ID file='     + env_file + ' type=properties') }}"
+    cf_hostname:      "{{ lookup('ini', 'CF_HOSTNAME file='      + env_file + ' type=properties') }}"
+    cf_tunnel_token:  "{{ lookup('ini', 'CF_TUNNEL_TOKEN file='  + env_file + ' type=properties') }}"
+  when: env_file is defined
+  vars: { ansible_become: false }
+
+# 1 B) If env_file is NOT provided → pull from OS env or passed -e vars (CI-friendly)
+- name: Load required vars from OS environment when no env_file is provided
+  ansible.builtin.set_fact:
+    github_username: "{{ github_username | default(lookup('env','GITHUB_USERNAME'), true) }}"
+    github_pat:       "{{ github_pat       | default(lookup('env','GITHUB_PAT'), true) }}"
+    cf_tunnel_id:     "{{ cf_tunnel_id     | default(lookup('env','CF_TUNNEL_ID'), true) }}"
+    cf_hostname:      "{{ cf_hostname      | default(lookup('env','CF_HOSTNAME'), true) }}"
+    cf_tunnel_token:  "{{ cf_tunnel_token  | default(lookup('env','CF_TUNNEL_TOKEN'), true) }}"
+  when: env_file is not defined
+  vars: { ansible_become: false }
+
+# 1 C) Fast fail for token mode
+- name: Fail fast if required keys are missing for token mode
   ansible.builtin.assert:
     that:
-      - github_username | length > 0
-      - github_pat | length > 0
-      - cf_tunnel_id | length > 0
-      - cf_hostname | length > 0
-      - cf_creds_src | length > 0
-    fail_msg: "Vereiste env ontbreekt (.env niet geladen of leeg)."
+      - (github_username | default('')) | length > 0
+      - (github_pat       | default('')) | length > 0
+      - (cf_tunnel_token  | default('')) | length > 0
+    fail_msg: "Missing GITHUB_USERNAME, GITHUB_PAT or CF_TUNNEL_TOKEN (via env_file or CI env/-e)."
+  vars: { ansible_become: false }
 
-- name: Ensure directories
+# 1 D) Optional: ensure the current user is in the docker group (needs re-login)
+- name: Ensure user is in 'docker' group (requires re-login to take effect)
+  ansible.builtin.user:
+    name: "{{ ansible_user | default(ansible_env.USER) }}"
+    groups: docker
+    append: true
+  when: manage_docker_group | default(false)
+
+# 2) Create base directories for the stack and HA config
+- name: Fail fast if we cannot write to ha_stack_dir
+  ansible.builtin.file:
+    path: "{{ ha_stack_dir }}/.permcheck"
+    state: touch
+    mode: "0644"
+  changed_when: false
+  failed_when: result is failed
+  register: result
+
+- name: Ensure HA base directories exist
   ansible.builtin.file:
     path: "{{ item }}"
     state: directory
@@ -17,9 +65,8 @@
   loop:
     - "{{ ha_stack_dir }}"
     - "{{ ha_config_dir }}"
-    - "{{ cf_cfg_dir }}"
 
-# Config uit repo
+# 3) Pull the homelab-config repo (HA)
 - name: Checkout homelab-config (HA)
   ansible.builtin.git:
     repo: "https://{{ github_username }}:{{ github_pat }}@github.com/{{ github_username }}/homelab-config.git"
@@ -28,44 +75,93 @@
     force: yes
     update: yes
 
+# 4) Optionally sync a subdirectory into the config root (only when subdir is set)
 - name: Sync repo subdir to config root (if needed)
   ansible.builtin.command:
     cmd: rsync -a {{ ha_config_dir }}/{{ ha_config_repo_subdir }}/ {{ ha_config_dir }}/
-  when: ha_config_repo_subdir | length > 0
+  when: ha_config_repo_subdir | default('') | length > 0
 
-# Cloudflared credentials: copy from controller → target
-- name: Check cloudflared creds exist on controller
+# 5) Classic Cloudflared only: ensure /etc/cloudflared exists on target
+- name: Ensure Cloudflared directory exists (ONLY for classic JSON mode)
+  ansible.builtin.file:
+    path: "{{ cf_dir }}"
+    state: directory
+    mode: "0755"
+  when: enable_cloudflared | default(false) and (cf_tunnel_token | default('') | length == 0)
+
+# 6) Classic mode: verify/copy credentials from controller (skipped when token is used)
+- name: Check Cloudflared creds exist on controller (classic mode)
   ansible.builtin.stat:
-    path: "{{ cf_creds_src }}"
+    path: "{{ cf_creds_src | default('') }}"
   register: cf_creds
   delegate_to: localhost
   run_once: true
+  when: enable_cloudflared | default(false) and (cf_tunnel_token | default('') | length == 0)
 
-- name: Quit if creds are missing
+- name: Abort if Cloudflared credentials are missing (classic mode)
   ansible.builtin.assert:
     that: cf_creds.stat.exists
     fail_msg: "Cloudflared creds not found on controller: {{ cf_creds_src }}"
+  when: enable_cloudflared | default(false) and (cf_tunnel_token | default('') | length == 0)
 
-- name: Copy cloudflared credentials to target
+- name: Copy Cloudflared credentials to target (classic mode)
   ansible.builtin.copy:
     src: "{{ cf_creds_src }}"
-    dest: "{{ cf_cfg_dir }}/{{ cf_tunnel_id }}.json"
+    dest: "{{ cf_dir }}/{{ cf_tunnel_id }}.json"
     mode: "0600"
+  when: enable_cloudflared | default(false) and (cf_tunnel_token | default('') | length == 0)
 
-# Templates & stack
-- name: Render cloudflared config
+# 7) Classic mode: render /etc/cloudflared/config.yml (skipped when token is used)
+- name: Render Cloudflared config (classic mode)
   ansible.builtin.template:
-    src: cloudflared-config.yml.j2
-    dest: "{{ cf_cfg_dir }}/config.yml"
+    src: "cloudflared-config.yml.j2"
+    dest: "{{ cf_dir }}/config.yml"
     mode: "0644"
+  when: enable_cloudflared | default(false) and (cf_tunnel_token | default('') | length == 0)
 
+# 8) Render docker-compose (always)
 - name: Render docker-compose
   ansible.builtin.template:
-    src: docker-compose.yml.j2
+    src: "docker-compose.yml.j2"
     dest: "{{ ha_stack_dir }}/docker-compose.yml"
     mode: "0644"
 
-- name: Bring up/update the stack
-  community.docker.docker_compose_v2:
-    project_src: "{{ ha_stack_dir }}"
-    state: present
+# 9) Bring up/update the stack (CLI, no Python SDK required)
+# 9 A) Local/dev path: use --env-file so compose reads all keys from your .env
+- name: Bring up/update the stack (CLI) using --env-file when provided
+  become: true
+  ansible.builtin.command:
+    cmd: >
+      docker compose
+      --env-file "{{ env_file }}"
+      -p "{{ ha_stack_name | default('ha-stack-ansible') }}"
+      -f "{{ ha_stack_dir }}/docker-compose.yml"
+      up -d
+  register: compose_up_envfile
+  changed_when: >
+    ('Recreated' in (compose_up_envfile.stderr | default(''))) or
+    ('Created'   in (compose_up_envfile.stderr | default(''))) or
+    ('Starting'  in (compose_up_envfile.stderr | default('')))
+  when: env_file is defined
+
+# 9 B) CI/pipeline path: no env_file → pass token only as process env for this command
+- name: Bring up/update the stack (CLI) passing token via process env (CI-friendly)
+  ansible.builtin.command:
+    cmd: >
+      docker compose
+      {% if env_file is defined and env_file|length > 0 %} --env-file {{ env_file | quote }} {% endif %}
+      -p "{{ ha_stack_name | default('ha-stack-ansible') }}"
+      -f "{{ ha_stack_dir }}/docker-compose.yml"
+      up -d
+  environment:
+    CF_TUNNEL_TOKEN: "{{ CF_TUNNEL_TOKEN | default(lookup('env','CF_TUNNEL_TOKEN'), true) | default(omit) }}"
+  register: compose_up
+  changed_when: >
+    ('Recreating' in compose_up.stdout) or
+    ('Creating' in compose_up.stdout) or
+    ('Starting' in compose_up.stdout)
+
+# 10) Show compose result (nice for troubleshooting)
+- name: Show compose result (debug)
+  ansible.builtin.debug:
+    var: compose_up
