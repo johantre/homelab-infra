@@ -1,10 +1,39 @@
 ---
+# --- New: discover the latest HA release tag (override > latest > stable) ---
+- name: Fetch latest Home Assistant Core release from GitHub
+  ansible.builtin.uri:
+    url: https://api.github.com/repos/home-assistant/core/releases/latest
+    method: GET
+    return_content: true
+    headers: >-
+      {{
+        {'Authorization': 'Bearer ' + github_token}
+        if (github_token | default('') | length) > 0 else {}
+      }}
+  register: ha_release_latest
+  failed_when: false
+  changed_when: false
+
+- name: Parse latest tag into ha_latest (e.g. 2025.10.3)
+  ansible.builtin.set_fact:
+    ha_latest: "{{ (ha_release_latest.json.tag_name | regex_replace('^v','')) 
+                  if (ha_release_latest is defined and
+                      ha_release_latest.json is defined and
+                      ha_release_latest.json.tag_name is defined) else '' }}"
+  changed_when: false
+
+- name: Decide ha_version (override > latest > stable fallback)
+  ansible.builtin.set_fact:
+    ha_version: >-
+      {{ (ha_version_override | default('') | trim)
+         if (ha_version_override | default('') | trim | length) > 0 else
+         (ha_latest | default('') | trim if (ha_latest | default('') | trim | length) > 0 else 'stable') }}
+  changed_when: false
+
 # 0) Fast, reliable facts (no sudo) to avoid stalls on "Gathering Facts"
 - name: Gather facts without sudo (fast & reliable)
   ansible.builtin.setup:
     gather_subset: ['min']
-  vars:
-    ansible_become: false
 
 # 1): resolve sensitive vars from either a provided .env (local) or CI env/extra-vars (pipeline)
 # 1 A) If env_file is provided → read from .env (dotenv/properties)
@@ -16,7 +45,6 @@
     cf_hostname:      "{{ lookup('ini', 'CF_HOSTNAME file='      + env_file + ' type=properties') }}"
     cf_tunnel_token:  "{{ lookup('ini', 'CF_TUNNEL_TOKEN file='  + env_file + ' type=properties') }}"
   when: env_file is defined
-  vars: { ansible_become: false }
 
 # 1 B) If env_file is NOT provided → pull from OS env or passed -e vars (CI-friendly)
 - name: Load required vars from OS environment when no env_file is provided
@@ -27,7 +55,6 @@
     cf_hostname:      "{{ cf_hostname      | default(lookup('env','CF_HOSTNAME'), true) }}"
     cf_tunnel_token:  "{{ cf_tunnel_token  | default(lookup('env','CF_TUNNEL_TOKEN'), true) }}"
   when: env_file is not defined
-  vars: { ansible_become: false }
 
 # 1 C) Fast fail for token mode
 - name: Fail fast if required keys are missing for token mode
@@ -37,7 +64,6 @@
       - (github_pat       | default('')) | length > 0
       - (cf_tunnel_token  | default('')) | length > 0
     fail_msg: "Missing GITHUB_USERNAME, GITHUB_PAT or CF_TUNNEL_TOKEN (via env_file or CI env/-e)."
-  vars: { ansible_become: false }
 
 # 1 D) Optional: ensure the current user is in the docker group (needs re-login)
 - name: Ensure user is in 'docker' group (requires re-login to take effect)
@@ -48,6 +74,17 @@
   when: manage_docker_group | default(false)
 
 # 2) Create base directories for the stack and HA config
+- name: Ensure HA base directories exist
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+    owner: "{{ ansible_user_id }}"
+    group: "{{ ansible_user_gid | default(ansible_user_id) }}"
+  loop:
+    - "{{ ha_stack_dir }}"
+    - "{{ ha_config_dir }}"
+
 - name: Fail fast if we cannot write to ha_stack_dir
   ansible.builtin.file:
     path: "{{ ha_stack_dir }}/.permcheck"
@@ -56,15 +93,6 @@
   changed_when: false
   failed_when: result is failed
   register: result
-
-- name: Ensure HA base directories exist
-  ansible.builtin.file:
-    path: "{{ item }}"
-    state: directory
-    mode: "0755"
-  loop:
-    - "{{ ha_stack_dir }}"
-    - "{{ ha_config_dir }}"
 
 # 3) Pull the homelab-config repo (HA)
 - name: Checkout homelab-config (HA)
@@ -129,7 +157,6 @@
 # 9) Bring up/update the stack (CLI, no Python SDK required)
 # 9 A) Local/dev path: use --env-file so compose reads all keys from your .env
 - name: Bring up/update the stack (CLI) using --env-file when provided
-  become: true
   ansible.builtin.command:
     cmd: >
       docker compose

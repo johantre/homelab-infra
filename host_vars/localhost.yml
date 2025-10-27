@@ -1,4 +1,4 @@
-base_dir: "{{ lookup('env','HOME') | default(ansible_env.HOME, true) }}/homelab/target"
+base_dir: "{{ ansible_env.HOME | default(lookup('env','HOME'), true) }}/homelab/target"
 
 ha_stack_dir:  "{{ base_dir }}/ha-stack-ansible"
 ha_config_dir: "{{ base_dir }}/homeassistant-ansible/config"
