@@ -2,6 +2,7 @@ services:
   {{ ha_container_name | default('homeassistant') }}:
     image: "ghcr.io/home-assistant/home-assistant:{{ ha_version }}"
     container_name: "{{ ha_container_name | default('homeassistant') }}"
+    user: "{{ runtime_uid }}:{{ runtime_gid }}"
     privileged: true
     restart: unless-stopped
     volumes:
@@ -16,10 +17,98 @@ services:
 {% if enable_cloudflared | default(false) %}
   cloudflared:
     image: cloudflare/cloudflared:latest
+    user: "{{ runtime_uid }}:{{ runtime_gid }}"
     restart: unless-stopped
     depends_on:
       - {{ ha_container_name | default('homeassistant') }}
     command: tunnel --no-autoupdate run --token ${CF_TUNNEL_TOKEN}
     environment:
       - CF_TUNNEL_TOKEN=${CF_TUNNEL_TOKEN}
+{% endif %}
+{% if enable_esphome %}
+  esphome:
+    image: ghcr.io/esphome/esphome:stable
+    container_name: esphome
+    user: "{{ runtime_uid }}:{{ runtime_gid }}"
+    restart: unless-stopped
+    depends_on:
+      - {{ ha_container_name }}
+    environment:
+      - TZ={{ tz | default("Europe/Brussels") }}
+    # NOTE: For local USB flashing add devices below (uncomment if needed)
+    # devices:
+    #   - /dev/ttyUSB0:/dev/ttyUSB0
+    # privileged: true
+    volumes:
+      # Reuse HA config; ESPHome will use /config/esphome
+      - {{ ha_config_dir }}:/config
+    ports:
+      - "{{ esphome_port }}:6052"
+    networks:
+      - default
+{% endif %}
+
+{% if enable_code_server %}
+  code_server:
+    image: lscr.io/linuxserver/code-server:latest
+    container_name: code_server
+    restart: unless-stopped
+    environment:
+      - PUID={{ runtime_uid }}
+      - PGID={{ runtime_gid }}
+      - TZ={{ tz | default("Europe/Brussels") }}
+      # Password auth for web UI (keep it in .env if you prefer)
+      - PASSWORD={{ ha_user_password }}
+      # - SUDO_PASSWORD={{ ha_user_password }}  # enable sudo inside container if needed
+    volumes:
+      # Workspace points to HA config so you can edit HA files
+      - {{ ha_config_dir }}:/config/workspace
+    ports:
+      - "{{ code_server_port }}:8443"
+    networks:
+      - default
+{% endif %}
+
+{% if enable_ssh_terminal %}
+  ssh_terminal:
+    image: lscr.io/linuxserver/openssh-server:latest
+    container_name: ssh_terminal
+    restart: unless-stopped
+    environment:
+      - PUID={{ runtime_uid }}
+      - PGID={{ runtime_gid }}
+      - TZ={{ tz | default("Europe/Brussels") }}
+      - PUBLIC_KEY_FILE=/config/.ssh/authorized_keys   # optional, if you add a key file
+      - PASSWORD_ACCESS=true
+      - USER_NAME={{ ha_user_username }}
+      - USER_PASSWORD={{ ha_user_password }}
+    volumes:
+      - {{ ha_config_dir }}:/config
+    ports:
+      - "{{ ssh_port }}:2222"
+    networks:
+      - default
+{% endif %}
+
+{% if enable_samba %}
+  samba:
+    image: dperson/samba:latest
+    container_name: samba
+    restart: unless-stopped
+    # NOTE: map to 445/139 on host only if host doesn't already run Samba
+    ports:
+      - "{{ samba_tcp_445 }}:445"
+      - "{{ samba_tcp_139 }}:139"
+    environment:
+      # Create a user with read/write access
+      - USER={{ ha_user_username }};{{ ha_user_password }}
+      # Share name 'homeassistant' pointing at /share/homeassistant
+      - SHARE=homeassistant;/share/homeassistant;yes;no;yes;all
+      - TZ={{ tz | default("Europe/Brussels") }}
+    volumes:
+      - {{ ha_config_dir }}:/share/homeassistant
+    cap_add:
+      - NET_ADMIN     # required by this image for smb config tweaks
+    networks:
+      - default
 {% endif %}
