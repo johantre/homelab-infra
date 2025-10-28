@@ -57,13 +57,19 @@
   when: env_file is not defined
 
 # 1 C) Fast fail for token mode
-- name: Fail fast if required keys are missing for token mode
+- name: Assert GitHub tokens present (local & CI)
   ansible.builtin.assert:
     that:
       - (github_username | default('')) | length > 0
       - (github_pat       | default('')) | length > 0
-      - (cf_tunnel_token  | default('')) | length > 0
-    fail_msg: "Missing GITHUB_USERNAME, GITHUB_PAT or CF_TUNNEL_TOKEN (via env_file or CI env/-e)."
+    fail_msg: "Missing GITHUB_USERNAME or GITHUB_PAT (expected via env_file of -e)."
+
+- name: Assert CF_TUNNEL_TOKEN present when cloudflared enabled
+  ansible.builtin.assert:
+    that:
+      - (cf_tunnel_token | default('')) | length > 0
+    fail_msg: "enable_cloudflared=true maar CF_TUNNEL_TOKEN ontbreekt."
+  when: (enable_cloudflared | default(false))
 
 # 1 D) Optional: ensure the current user is in the docker group (needs re-login)
 - name: Ensure user is in 'docker' group (requires re-login to take effect)
@@ -94,20 +100,45 @@
   failed_when: result is failed
   register: result
 
-# 3) Pull the homelab-config repo (HA)
-- name: Checkout homelab-config (HA)
-  ansible.builtin.git:
-    repo: "https://{{ github_username }}:{{ github_pat }}@github.com/{{ github_username }}/homelab-config.git"
-    dest: "{{ ha_config_dir }}"
-    version: "{{ ha_config_repo_branch }}"
-    force: yes
-    update: yes
+# 3) Check the homelab-config folder (HA)
+- name: Ensure ha_config_dir exists
+  ansible.builtin.file:
+    path: "{{ ha_config_dir }}"
+    state: directory
 
-# 4) Optionally sync a subdirectory into the config root (only when subdir is set)
-- name: Sync repo subdir to config root (if needed)
-  ansible.builtin.command:
-    cmd: rsync -a {{ ha_config_dir }}/{{ ha_config_repo_subdir }}/ {{ ha_config_dir }}/
-  when: ha_config_repo_subdir | default('') | length > 0
+# Copy repo config into target config root (mandatory since git clone step was removed)
+- name: Stat | source repo dir (ha_config_repo_dir)
+  ansible.builtin.stat:
+    path: "{{ ha_config_repo_dir }}"
+  register: _src
+
+- name: Fail if source repo dir missing
+  ansible.builtin.fail:
+    msg: "Source dir not found: {{ ha_config_repo_dir }}"
+  when: not _src.stat.exists
+
+- name: Sync repo → ha_config_dir
+  ansible.builtin.command: >
+     rsync -a --delete --no-owner --no-group --no-perms --omit-dir-times
+            --exclude=".storage/backups/" --exclude="deps/"
+            {{ ha_config_repo_dir }}/
+            {{ ha_config_dir }}/
+  changed_when: false
+
+# Debug which directory we validate (helps in local vs CI)
+- name: Debug | ha_config_dir being validated
+  ansible.builtin.debug:
+    msg: "Validating configuration.yaml in: {{ ha_config_dir }}"
+
+- name: Verify configuration.yaml present in ha_config_dir
+  ansible.builtin.stat:
+    path: "{{ ha_config_dir }}/configuration.yaml"
+  register: ha_cfg_stat
+
+- name: Fail if configuration.yaml missing
+  ansible.builtin.fail:
+    msg: "Expected configuration.yaml in {{ ha_config_dir }} (we no longer git clone in this role)."
+  when: not ha_cfg_stat.stat.exists
 
 # 5) Classic Cloudflared only: ensure /etc/cloudflared exists on target
 - name: Ensure Cloudflared directory exists (ONLY for classic JSON mode)
@@ -192,3 +223,8 @@
 - name: Show compose result (debug)
   ansible.builtin.debug:
     var: compose_up
+
+# 11) Bootstrap new user
+- import_tasks: bootstrap-auth.yml
+  when: ha_bootstrap_enable | default(true)
+  tags: [ha_bootstrap]
