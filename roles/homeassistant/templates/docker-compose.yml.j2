@@ -62,6 +62,7 @@ services:
       # - SUDO_PASSWORD={{ ha_user_password }}  # enable sudo inside container if needed
     volumes:
       # Workspace points to HA config so you can edit HA files
+      - {{ code_server_data_dir }}:/config
       - {{ ha_config_dir }}:/config/workspace
     ports:
       - "{{ code_server_port }}:8443"
@@ -83,7 +84,7 @@ services:
       - USER_NAME={{ ha_user_username }}
       - USER_PASSWORD={{ ha_user_password }}
     volumes:
-      - {{ ha_config_dir }}:/config
+      - {{ ssh_data_dir }}:/config
     ports:
       - "{{ ssh_port }}:2222"
     networks:
