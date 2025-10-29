@@ -46,6 +46,11 @@ samba_tcp_139: 139
 esphome_port: 6052
 ssh_port: 2222
 
-# Feature vars
+# Feature vars, Data dirs
 code_server_data_dir: "{{ ha_stack_dir }}/data/code-server"
-ssh_data_dir: "{{ ha_stack_dir }}/data/ssh"
+ssh_data_dir:         "{{ ha_stack_dir }}/data/ssh"
+
+# Required data dirs (created in docker-compose.yml)
+service_data_dirs:
+  - "{{ code_server_data_dir }}"
+  - "{{ ssh_data_dir }}"

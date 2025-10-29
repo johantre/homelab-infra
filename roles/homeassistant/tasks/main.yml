@@ -30,13 +30,13 @@
          (ha_latest | default('') | trim if (ha_latest | default('') | trim | length) > 0 else 'stable') }}
   changed_when: false
 
-# 0) Fast, reliable facts (no sudo) to avoid stalls on "Gathering Facts"
+# Fast, reliable facts (no sudo) to avoid stalls on "Gathering Facts"
 - name: Gather facts without sudo (fast & reliable)
   ansible.builtin.setup:
     gather_subset: ['min']
 
-# 1): resolve sensitive vars from either a provided .env (local) or CI env/extra-vars (pipeline)
-# 1 A) If env_file is provided → read from .env (dotenv/properties)
+# Resolve sensitive vars from either a provided .env (local) or CI env/extra-vars (pipeline)
+# If env_file is provided → read from .env (dotenv/properties)
 - name: Load required vars from .env when env_file is provided
   ansible.builtin.set_fact:
     github_username: "{{ lookup('ini', 'GITHUB_USERNAME file=' + env_file + ' type=properties') }}"
@@ -46,7 +46,7 @@
     cf_tunnel_token:  "{{ lookup('ini', 'CF_TUNNEL_TOKEN file='  + env_file + ' type=properties') }}"
   when: env_file is defined
 
-# 1 B) If env_file is NOT provided → pull from OS env or passed -e vars (CI-friendly)
+# If env_file is NOT provided → pull from OS env or passed -e vars (CI-friendly)
 - name: Load required vars from OS environment when no env_file is provided
   ansible.builtin.set_fact:
     github_username: "{{ github_username | default(lookup('env','GITHUB_USERNAME'), true) }}"
@@ -56,7 +56,7 @@
     cf_tunnel_token:  "{{ cf_tunnel_token  | default(lookup('env','CF_TUNNEL_TOKEN'), true) }}"
   when: env_file is not defined
 
-# 1 C) Fast fail for token mode
+# Fast fail for token mode
 - name: Assert GitHub tokens present (local & CI)
   ansible.builtin.assert:
     that:
@@ -71,7 +71,7 @@
     fail_msg: "enable_cloudflared=true maar CF_TUNNEL_TOKEN ontbreekt."
   when: (enable_cloudflared | default(false))
 
-# 1 D) Optional: ensure the current user is in the docker group (needs re-login)
+# Optional: ensure the current user is in the docker group (needs re-login)
 - name: Ensure user is in 'docker' group (requires re-login to take effect)
   ansible.builtin.user:
     name: "{{ ansible_user | default(ansible_env.USER) }}"
@@ -79,7 +79,7 @@
     append: true
   when: manage_docker_group | default(false)
 
-# 2) Create base directories for the stack and HA config
+# Create base directories for the stack and HA config
 - name: Ensure HA base directories exist
   ansible.builtin.file:
     path: "{{ item }}"
@@ -100,7 +100,7 @@
   failed_when: result is failed
   register: result
 
-# 3) Check the homelab-config folder (HA)
+# Check the homelab-config folder (HA)
 - name: Ensure ha_config_dir exists
   ansible.builtin.file:
     path: "{{ ha_config_dir }}"
@@ -140,7 +140,7 @@
     msg: "Expected configuration.yaml in {{ ha_config_dir }} (we no longer git clone in this role)."
   when: not ha_cfg_stat.stat.exists
 
-# 5) Classic Cloudflared only: ensure /etc/cloudflared exists on target
+# Classic Cloudflared only: ensure /etc/cloudflared exists on target
 - name: Ensure Cloudflared directory exists (ONLY for classic JSON mode)
   ansible.builtin.file:
     path: "{{ cf_dir }}"
@@ -148,7 +148,7 @@
     mode: "0755"
   when: enable_cloudflared | default(false) and (cf_tunnel_token | default('') | length == 0)
 
-# 6) Classic mode: verify/copy credentials from controller (skipped when token is used)
+# Classic mode: verify/copy credentials from controller (skipped when token is used)
 - name: Check Cloudflared creds exist on controller (classic mode)
   ansible.builtin.stat:
     path: "{{ cf_creds_src | default('') }}"
@@ -170,7 +170,7 @@
     mode: "0600"
   when: enable_cloudflared | default(false) and (cf_tunnel_token | default('') | length == 0)
 
-# 7) Classic mode: render /etc/cloudflared/config.yml (skipped when token is used)
+# Classic mode: render /etc/cloudflared/config.yml (skipped when token is used)
 - name: Render Cloudflared config (classic mode)
   ansible.builtin.template:
     src: "cloudflared-config.yml.j2"
@@ -178,15 +178,26 @@
     mode: "0644"
   when: enable_cloudflared | default(false) and (cf_tunnel_token | default('') | length == 0)
 
-# 8) Render docker-compose (always)
+# pre-docker-compose: Ensure service data dirs exist with correct ownership
+- name: Ensure service data dirs exist
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ runtime_uid }}"
+    group: "{{ runtime_gid }}"
+    mode: "0750"
+  loop: "{{ service_data_dirs }}"
+  changed_when: false
+
+# Render docker-compose (always)
 - name: Render docker-compose
   ansible.builtin.template:
     src: "docker-compose.yml.j2"
     dest: "{{ ha_stack_dir }}/docker-compose.yml"
     mode: "0644"
 
-# 9) Bring up/update the stack (CLI, no Python SDK required)
-# 9 A) Local/dev path: use --env-file so compose reads all keys from your .env
+# Bring up/update the stack (CLI, no Python SDK required)
+# Local/dev path: use --env-file so compose reads all keys from your .env
 - name: Bring up/update the stack (CLI) using --env-file when provided
   ansible.builtin.command:
     cmd: >
@@ -202,7 +213,7 @@
     ('Starting'  in (compose_up_envfile.stderr | default('')))
   when: env_file is defined
 
-# 9 B) CI/pipeline path: no env_file → pass token only as process env for this command
+# CI/pipeline path: no env_file → pass token only as process env for this command
 - name: Bring up/update the stack (CLI) passing token via process env (CI-friendly)
   ansible.builtin.command:
     cmd: >
@@ -219,12 +230,12 @@
     ('Creating' in compose_up.stdout) or
     ('Starting' in compose_up.stdout)
 
-# 10) Show compose result (nice for troubleshooting)
+# Show compose result (nice for troubleshooting)
 - name: Show compose result (debug)
   ansible.builtin.debug:
     var: compose_up
 
-# 11) Bootstrap new user
+# Bootstrap new user
 - import_tasks: bootstrap-auth.yml
   when: ha_bootstrap_enable | default(true)
   tags: [ha_bootstrap]
