@@ -40,8 +40,7 @@ services:
     #   - /dev/ttyUSB0:/dev/ttyUSB0
     # privileged: true
     volumes:
-      # Reuse HA config; ESPHome will use /config/esphome
-      - {{ ha_config_dir }}:/config
+      - {{ esphome_data_dir }}:/config
     ports:
       - "{{ esphome_port }}:6052"
     networks:

@@ -43,14 +43,16 @@ enable_samba: true
 code_server_port: 8443      # linuxserver/code-server default
 samba_tcp_445: 445          # change when needed
 samba_tcp_139: 139
-esphome_port: 6052
 ssh_port: 2222
+esphome_port: 6052
 
 # Feature vars, Data dirs
 code_server_data_dir: "{{ ha_stack_dir }}/data/code-server"
 ssh_data_dir:         "{{ ha_stack_dir }}/data/ssh"
+esphome_data_dir:     "{{ ha_stack_dir }}/data/esphome"
 
 # Required data dirs (created in docker-compose.yml)
 service_data_dirs:
   - "{{ code_server_data_dir }}"
   - "{{ ssh_data_dir }}"
+  - "{{ esphome_data_dir }}"
