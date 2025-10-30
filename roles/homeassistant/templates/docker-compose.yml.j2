@@ -85,6 +85,7 @@ services:
       - USER_PASSWORD={{ ha_user_password }}
     volumes:
       - {{ ssh_data_dir }}:/config
+      - {{ ha_config_dir }}:/ha_config
     ports:
       - "{{ ssh_port }}:2222"
     networks:
@@ -96,16 +97,16 @@ services:
     image: dperson/samba:latest
     container_name: samba
     restart: unless-stopped
-    # NOTE: map to 445/139 on host only if host doesn't already run Samba
+    command: >
+      -u "{{ ha_user_username }};{{ ha_user_password }};{{ runtime_uid }};{{ runtime_gid }}"
+      -s "homeassistant;/share/homeassistant;yes;no;no;{{ ha_user_username }}"
+      -g "force user = {{ ha_user_username }}"
+      -g "create mask = 0664"
+      -g "directory mask = 0775"
+      -g "map to guest = Bad User"
     ports:
       - "{{ samba_tcp_445 }}:445"
       - "{{ samba_tcp_139 }}:139"
-    environment:
-      # Create a user with read/write access
-      - USER={{ ha_user_username }};{{ ha_user_password }}
-      # Share name 'homeassistant' pointing at /share/homeassistant
-      - SHARE=homeassistant;/share/homeassistant;yes;no;yes;all
-      - TZ={{ tz | default("Europe/Brussels") }}
     volumes:
       - {{ ha_config_dir }}:/share/homeassistant
     cap_add:
