@@ -34,7 +34,7 @@ towards:
 
 # TODO's:
 * Attention for need for sudo pass **first time** to set nopassword!
-* Move to GitHub actions w Tailscale/WireGuard (complete hands-off)
+* Move to GitHub actions as controller w Tailscale/WireGuard (complete hands-off)
 * Fix this with hands-off installation media with 2 volumes 
   * Latest Ubuntu Server installer
   * on separate volume CIDATA met user-data + meta-data \
