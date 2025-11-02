@@ -7,12 +7,18 @@ Ansible (playbooks, roles, inventory, docker compose templates)
 * target: node to deploy to
 
 # Hard dependencies
-The following private repo is being used for deployment:  
-https://github.com/johantre/homelab-config 
+* The following private repo is being used for deployment:  
+https://github.com/johantre/homelab-config
+* .env file on the controller containing all secrets (in GH secrets later on)
 
 # Hidden dependencies
 Implicit things to remember:
-We use the standard location for the SSH key on the controller (~/.ssh/id_ed25519).
+* On controller node, the SSH public and private keys in the default location 
+  * ~/.ssh/id_ed25519
+  * ~/.ssh/id_ed25519.pub
+* On target node, the SSH Public key in default location 
+  * ~/.ssh/authorized_keys \
+    authorized_keys and id_ed25519.pub should be identical.
 
 # Commands in CLI
 ## From the controller
@@ -27,6 +33,10 @@ towards:
     ansible -i inventories/hosts ha_target \
     -m ansible.builtin.command \
     -a "docker compose -p ha-stack-ansible -f $HOME/homelab/target/ha-stack-ansible/docker-compose.yml down"
+### Copy ssh key to target default location
+This copies the default public key to ~/.ssh/id_ed25519.pub file to ~/.ssh/authorized_keys file immediately with the right permissions.
+
+    ssh-copy-id ubuntu@<TARGET_IP>
 
 ## From the target 
 ### Stopping target
