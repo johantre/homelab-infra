@@ -58,6 +58,7 @@
 
 # Fast fail for token mode
 - name: Assert GitHub tokens present (local & CI)
+  no_log: true
   ansible.builtin.assert:
     that:
       - (github_username | default('')) | length > 0
@@ -65,10 +66,11 @@
     fail_msg: "Missing GITHUB_USERNAME or GITHUB_PAT (expected via env_file of -e)."
 
 - name: Assert CF_TUNNEL_TOKEN present when cloudflared enabled
+  no_log: true
   ansible.builtin.assert:
     that:
       - (cf_tunnel_token | default('')) | length > 0
-    fail_msg: "enable_cloudflared=true maar CF_TUNNEL_TOKEN ontbreekt."
+    fail_msg: "enable_cloudflared=true but CF_TUNNEL_TOKEN is missing."
   when: (enable_cloudflared | default(false))
 
 # Optional: ensure the current user is in the docker group (needs re-login)
@@ -116,6 +118,16 @@
   ansible.builtin.fail:
     msg: "Source dir not found: {{ ha_config_repo_dir }}"
   when: not _src.stat.exists
+
+# Ensure target can run apt/system tasks without prompts (CI-friendly)
+- name: Include sudoers setup for target
+  ansible.builtin.include_tasks: sudoers.yml
+  when: "'ha_target' in group_names and (enable_target_passwordless_sudo | default(true))"
+
+# Prepare target packages (Docker/Compose + rsync) before we sync the repo
+- name: Include docker install for target
+  ansible.builtin.include_tasks: docker-install.yml
+  when: "'ha_target' in group_names"
 
 - name: Sync repo → ha_config_dir
   ansible.builtin.command: >
@@ -196,39 +208,37 @@
     dest: "{{ ha_stack_dir }}/docker-compose.yml"
     mode: "0644"
 
-# Bring up/update the stack (CLI, no Python SDK required)
-# Local/dev path: use --env-file so compose reads all keys from your .env
-- name: Bring up/update the stack (CLI) using --env-file when provided
+# Bring up/update the stack (CLI, no Python SDK required, using CF_TUNNEL_TOKEN as env var)
+- name: Bring up/update (no env file)
+  no_log: true
   ansible.builtin.command:
     cmd: >
       docker compose
-      --env-file "{{ env_file }}"
-      -p "{{ ha_stack_name | default('ha-stack-ansible') }}"
-      -f "{{ ha_stack_dir }}/docker-compose.yml"
+      -p {{ ha_stack_name | default('ha-stack-ansible') | quote }}
+      -f {{ ha_stack_dir }}/docker-compose.yml
       up -d
-  register: compose_up_envfile
-  changed_when: >
-    ('Recreated' in (compose_up_envfile.stderr | default(''))) or
-    ('Created'   in (compose_up_envfile.stderr | default(''))) or
-    ('Starting'  in (compose_up_envfile.stderr | default('')))
-  when: env_file is defined
-
-# CI/pipeline path: no env_file → pass token only as process env for this command
-- name: Bring up/update the stack (CLI) passing token via process env (CI-friendly)
-  ansible.builtin.command:
-    cmd: >
-      docker compose
-      {% if env_file is defined and env_file|length > 0 %} --env-file {{ env_file | quote }} {% endif %}
-      -p "{{ ha_stack_name | default('ha-stack-ansible') }}"
-      -f "{{ ha_stack_dir }}/docker-compose.yml"
-      up -d
+  args:
+    chdir: "{{ ha_stack_dir }}"
   environment:
-    CF_TUNNEL_TOKEN: "{{ CF_TUNNEL_TOKEN | default(lookup('env','CF_TUNNEL_TOKEN'), true) | default(omit) }}"
+    CF_TUNNEL_TOKEN: "{{ cf_tunnel_token | default(lookup('env','CF_TUNNEL_TOKEN'), true) | default(omit) }}"
   register: compose_up
-  changed_when: >
-    ('Recreating' in compose_up.stdout) or
-    ('Creating' in compose_up.stdout) or
-    ('Starting' in compose_up.stdout)
+  changed_when: false
+
+- name: Derive changed=true from compose output (stdout+stderr)
+  ansible.builtin.set_fact:
+    _compose_changed: >-
+      {{
+        ('Recreated'  in ((compose_up.stdout|default('')) ~ (compose_up.stderr|default('')))) or
+        ('Recreating' in ((compose_up.stdout|default('')) ~ (compose_up.stderr|default('')))) or
+        ('Created'    in ((compose_up.stdout|default('')) ~ (compose_up.stderr|default('')))) or
+        ('Creating'   in ((compose_up.stdout|default('')) ~ (compose_up.stderr|default('')))) or
+        ('Starting'   in ((compose_up.stdout|default('')) ~ (compose_up.stderr|default(''))))
+      }}
+
+- name: Mark task changed if compose created/recreated/started containers
+  ansible.builtin.debug:
+    msg: "Compose up ran."
+  changed_when: _compose_changed
 
 # Show compose result (nice for troubleshooting)
 - name: Show compose result (debug)

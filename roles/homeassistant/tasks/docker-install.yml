@@ -1,0 +1,53 @@
+---
+# Runs ONLY when included from main.yml on ha_target
+
+- name: Remove Docker Inc packages if present (avoid conflicts)
+  ansible.builtin.apt:
+    name:
+      - docker-ce
+      - docker-ce-cli
+      - containerd.io
+      - docker-buildx-plugin
+      - docker-compose-plugin
+    state: absent
+    purge: true
+  ignore_errors: true
+  become: true
+
+- name: Refresh apt cache
+  ansible.builtin.apt:
+    update_cache: true
+  become: true
+
+- name: Install Docker from Ubuntu repo (docker.io + compose v2)
+  ansible.builtin.apt:
+    name:
+      - docker.io
+      - docker-compose-v2
+    state: present
+    update_cache: true
+  become: true
+
+# rsync is needed for repo → config sync; install it here (target only)
+- command: bash -lc 'command -v rsync'
+  register: _rsync_bin
+  changed_when: false
+  failed_when: false
+
+- apt:
+    name: rsync
+    state: present
+    update_cache: true
+  become: true
+  when: _rsync_bin.rc != 0
+
+- name: Add remote user to docker group
+  ansible.builtin.user:
+    name: "{{ ansible_user }}"
+    groups: docker
+    append: true
+  become: true
+
+# IMPORTANT: meta does not support `when:`; now it's in an included file that only runs on ha_target.
+- name: Reset connection so docker group takes effect
+  ansible.builtin.meta: reset_connection
