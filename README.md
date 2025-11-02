@@ -48,7 +48,7 @@ This copies the default public key to ~/.ssh/id_ed25519.pub file to ~/.ssh/autho
 * Fix this with hands-off installation media with 2 volumes 
   * Latest Ubuntu Server installer
   * on separate volume CIDATA met user-data + meta-data \
-  that assures ssh-server, docker, git, ... NOPASSWD is configured during silent ubuntu install/flash.
+  that assures ssh-server, docker, git, mac-randomization off... NOPASSWD is configured during silent ubuntu install/flash.
   * OR with network seed, wo CIDATA volume
 * Deployment from fresh ubuntu flashed disk
 * Test deployment is working
