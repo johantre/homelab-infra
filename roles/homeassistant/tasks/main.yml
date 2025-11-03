@@ -231,13 +231,21 @@
     path: "{{ ha_stack_dir }}/.ha_version.lock"
   register: ha_lock_stat
 
+- name: Read HA version lock (remote)
+  ansible.builtin.slurp:
+    src: "{{ ha_stack_dir }}/.ha_version.lock"
+  register: ha_lock_slurp
+  when: ha_lock_stat.stat.exists
+
+- name: Set ha_version_locked fact (from lock)
+  ansible.builtin.set_fact:
+    ha_version_locked: "{{ (ha_lock_slurp.content | b64decode).strip() }}"
+  when: ha_lock_stat.stat.exists
+
 - name: Derive ha_effective_version (lock > discovered)
   ansible.builtin.set_fact:
     ha_effective_version: >-
-      {{ (lookup('file', ha_stack_dir + '/.ha_version.lock') | trim)
-         if ha_lock_stat.stat.exists
-         else (ha_version | trim) }}
-  changed_when: false
+      {{ ha_version_locked | default(ha_version_discovered) }}
 
 - name: Bootstrap lock file on first run (pin to discovered version)
   ansible.builtin.copy:

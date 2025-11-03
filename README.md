@@ -29,10 +29,14 @@ towards:
     ansible-playbook -i inventories/hosts site.yml -l ha -e env_file=../.env
 #### ha_target
     ansible-playbook -i inventories/hosts site.yml -l ha_target -e env_file=../.env
-### Stopping target 
+### DOWN/UP target 
     ansible -i inventories/hosts ha_target \
-    -m ansible.builtin.command \
-    -a "docker compose -p ha-stack-ansible -f $HOME/homelab/target/ha-stack-ansible/docker-compose.yml down"
+    -m ansible.builtin.shell \
+    -a 'docker compose -p ha-stack-ansible -f "$HOME/homelab/target/ha-stack-ansible/docker-compose.yml" down'
+
+    ansible -i inventories/hosts ha_target \
+    -m ansible.builtin.shell \
+    -a 'docker compose -p ha-stack-ansible -f "$HOME/homelab/target/ha-stack-ansible/docker-compose.yml" up -d'
 ### Copy ssh key to target default location
 This copies the default public key to ~/.ssh/id_ed25519.pub file to ~/.ssh/authorized_keys file immediately with the right permissions.
 
