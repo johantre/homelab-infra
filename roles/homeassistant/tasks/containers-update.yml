@@ -1,0 +1,82 @@
+- name: Decide desired HA version for update (override > discovered > locked)
+  ansible.builtin.set_fact:
+    _desired_ha_version: >-
+      {{ (ha_version_override | default('') | trim)
+         if (ha_version_override | default('') | trim | length) > 0
+         else (ha_version | trim) }}
+  changed_when: false
+  tags: [ha_update, containers_update]
+
+- name: Update HA version lock
+  ansible.builtin.copy:
+    dest: "{{ ha_stack_dir }}/.ha_version.lock"
+    mode: "0644"
+    content: "{{ _desired_ha_version }}\n"
+  tags: [ha_update, containers_update]
+
+# Recompute effective version and re-render compose so the new tag is used
+- name: Recompute ha_effective_version after lock change
+  ansible.builtin.set_fact:
+    ha_effective_version: "{{ _desired_ha_version }}"
+  changed_when: false
+  tags: [ha_update, containers_update]
+
+- name: Re-render docker-compose with new HA tag
+  ansible.builtin.template:
+    src: "docker-compose.yml.j2"
+    dest: "{{ ha_stack_dir }}/docker-compose.yml"
+    mode: "0644"
+  tags: [ha_update, containers_update]
+
+# Pull + up ONLY homeassistant (faster/safer); if needed, put back to "all services" if you want
+- name: Docker compose pull (homeassistant)
+  ansible.builtin.command:
+    cmd: >
+      docker compose
+      -p {{ ha_stack_name | default('ha-stack-ansible') | quote }}
+      -f {{ ha_stack_dir }}/docker-compose.yml
+      pull {{ ha_container_name | default('homeassistant') }}
+  args:
+    chdir: "{{ ha_stack_dir }}"
+  register: ha_pull
+  changed_when: "'Downloaded' in (ha_pull.stdout | default('') ~ ha_pull.stderr | default(''))"
+  tags: [ha_update, containers_update]
+
+- name: Docker compose up -d (homeassistant)
+  ansible.builtin.command:
+    cmd: >
+      docker compose
+      -p {{ ha_stack_name | default('ha-stack-ansible') | quote }}
+      -f {{ ha_stack_dir }}/docker-compose.yml
+      up -d {{ ha_container_name | default('homeassistant') }}
+  args:
+    chdir: "{{ ha_stack_dir }}"
+  register: ha_up
+  changed_when: >
+    ( (ha_up.stdout|default('') ~ ha_up.stderr|default(''))
+      | regex_search('Recreated|Recreating|Created|Creating|Starting') ) is not none
+  tags: [ha_update, containers_update]
+
+- name: Docker compose pull (all services)
+  command: >
+    docker compose
+    -p {{ ha_stack_name | default('ha-stack-ansible') | quote }}
+    -f {{ ha_stack_dir }}/docker-compose.yml
+    pull
+  args:
+    chdir: "{{ ha_stack_dir }}"
+  register: compose_pull
+  changed_when: "'Downloaded' in (compose_pull.stdout | default('') ~ compose_pull.stderr | default(''))"
+
+- name: Docker compose up -d (recreate if image changed)
+  command: >
+    docker compose
+    -p {{ ha_stack_name | default('ha-stack-ansible') | quote }}
+    -f {{ ha_stack_dir }}/docker-compose.yml
+    up -d
+  args:
+    chdir: "{{ ha_stack_dir }}"
+  register: compose_up
+  changed_when: >
+    ( (compose_up.stdout|default('') ~ compose_up.stderr|default(''))
+      | regex_search('Recreated|Recreating|Created|Creating|Starting') ) is not none

@@ -1,4 +1,15 @@
 ---
+# Check target paths first
+- name: Fail fast if paths resolve outside target user's home
+  ansible.builtin.assert:
+    that:
+      - ha_stack_dir is search('/home/' ~ ansible_user ~ '/')
+      - ha_config_dir is search('/home/' ~ ansible_user ~ '/')
+    fail_msg: >
+      One or more paths point outside /home/{{ ansible_user }}:
+      ha_stack_dir={{ ha_stack_dir }}, ha_config_dir={{ ha_config_dir }}.
+      Check inventories/group_vars/all.yml.
+
 # --- New: discover the latest HA release tag (override > latest > stable) ---
 - name: Fetch latest Home Assistant Core release from GitHub
   ansible.builtin.uri:
@@ -124,10 +135,24 @@
   ansible.builtin.include_tasks: sudoers.yml
   when: "'ha_target' in group_names and (enable_target_passwordless_sudo | default(true))"
 
+# Optional OS updates (runs only when --tags os_update is used)
+- name: Include OS updates (opt-in via tags)
+  include_tasks: os-update.yml
+  tags: [os_update]
+
 # Prepare target packages (Docker/Compose + rsync) before we sync the repo
 - name: Include docker install for target
   ansible.builtin.include_tasks: docker-install.yml
   when: "'ha_target' in group_names"
+
+# Backup opt-in via tags (propagate tag to included tasks)
+- name: Include backup before updates (opt-in via tags)
+  include_tasks:
+    file: backup.yml
+    apply:
+      tags:
+        - backup
+  tags: [backup]
 
 - name: Sync repo → ha_config_dir
   ansible.builtin.command: >
@@ -201,12 +226,37 @@
   loop: "{{ service_data_dirs }}"
   changed_when: false
 
+- name: Stat HA version lock file
+  ansible.builtin.stat:
+    path: "{{ ha_stack_dir }}/.ha_version.lock"
+  register: ha_lock_stat
+
+- name: Derive ha_effective_version (lock > discovered)
+  ansible.builtin.set_fact:
+    ha_effective_version: >-
+      {{ (lookup('file', ha_stack_dir + '/.ha_version.lock') | trim)
+         if ha_lock_stat.stat.exists
+         else (ha_version | trim) }}
+  changed_when: false
+
+- name: Bootstrap lock file on first run (pin to discovered version)
+  ansible.builtin.copy:
+    dest: "{{ ha_stack_dir }}/.ha_version.lock"
+    mode: "0644"
+    content: "{{ ha_effective_version }}\n"
+  when: not ha_lock_stat.stat.exists
+
 # Render docker-compose (always)
 - name: Render docker-compose
   ansible.builtin.template:
     src: "docker-compose.yml.j2"
     dest: "{{ ha_stack_dir }}/docker-compose.yml"
     mode: "0644"
+
+# Optional: pull images & up -d when explicitly asked
+- name: Include containers update (opt-in via tags)
+  include_tasks: containers-update.yml
+  tags: [containers_update, ha_update]
 
 # Bring up/update the stack (CLI, no Python SDK required, using CF_TUNNEL_TOKEN as env var)
 - name: Bring up/update (no env file)

@@ -4,13 +4,14 @@ github_username: "{{ lookup('env','GITHUB_USERNAME') }}"
 runtime_uid: "{{ ansible_user_uid }}"
 runtime_gid: "{{ ansible_user_gid }}"
 
-base_dir: "{{ ansible_env.HOME | default(lookup('env','HOME'), true) }}/homelab/target"
+base_home: "/home/{{ ansible_user }}"
+base_dir: "{{ base_home }}/homelab/target"
 
 # --- Homeassistant
 ha_version: "stable"
 ha_version_override: ""
 
-ha_config_repo_dir: "{{ ansible_env.HOME }}/homelab/config/{{ ha_config_repo_subdir }}"
+ha_config_repo_dir: "{{ base_home }}/homelab/config/{{ ha_config_repo_subdir }}"
 ha_config_dir: "{{ base_dir }}/homeassistant-ansible/config"
 ha_stack_dir:  "{{ base_dir }}/ha-stack-ansible"
 ha_project: "ha-stack-ansible"

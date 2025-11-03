@@ -38,6 +38,38 @@ This copies the default public key to ~/.ssh/id_ed25519.pub file to ~/.ssh/autho
 
     ssh-copy-id ubuntu@<TARGET_IP>
 
+### Backup
+* making backups
+
+
+    ansible-playbook -i inventories/hosts site.yml -l ha_target --tags backup -vv
+* checking backups
+
+
+    ansible -i inventories/hosts ha_target -m shell \
+      -a 'ls -lt "$HOME/homelab/target/ha-stack-ansible/backup" | head -n 3'
+
+### HA Update
+* first run for bootstrapping
+
+
+    ansible-playbook -i inventories/hosts site.yml -l ha_target -e env_file=../.env
+* upgrade latest version
+
+
+    ansible-playbook -i inventories/hosts site.yml -l ha_target --tags ha_update
+* upgrade specific version
+
+
+    ansible-playbook -i inventories/hosts site.yml -l ha_target --tags ha_update -e ha_version_override=2025.10.5
+* roll back: put lock back 
+
+
+    ansible -i inventories/hosts ha_target -m copy \
+      -a 'dest="{{ ha_stack_dir }}/.ha_version.lock" mode=0644 content="2025.10.3\n"'
+    ansible-playbook -i inventories/hosts site.yml -l ha_target --tags ha_update
+
+
 ## From the target 
 ### Stopping target
     docker compose -p ha-stack-ansible -f "$HOME/homelab/target/ha-stack-ansible/docker-compose.yml" down
@@ -60,4 +92,3 @@ This copies the default public key to ~/.ssh/id_ed25519.pub file to ~/.ssh/autho
       * deploys _keep_ working
       * updates _keep_ working
       * backups _keep_ working
- 

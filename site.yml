@@ -1,5 +1,5 @@
 - hosts: all
-  gather_facts: false          # don't gather facts implicitly (avoids sudo)
+  gather_facts: true
   vars:
     ansible_python_interpreter: /usr/bin/python3
   roles:
