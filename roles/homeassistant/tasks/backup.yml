@@ -3,6 +3,8 @@
     path: "{{ ha_stack_dir }}/backup"
     state: directory
     mode: "0750"
+  when: ha_backups_enabled | bool
+  tags: [backups]
 
 - name: Create HA config backup tarball (light)
   community.general.archive:
@@ -13,3 +15,5 @@
     exclude_path:
       - "{{ ha_config_dir }}/.storage/backups"
       - "{{ ha_config_dir }}/deps"
+  when: ha_backups_enabled | bool
+  tags: [backups]
