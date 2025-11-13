@@ -1,0 +1,49 @@
+
+## Resolve variables (single source of truth)
+## 1) If env_file is given read .env (KEY=VALUE)
+- name: Resolve variables from .env (properties) when provided
+  ansible.builtin.set_fact:
+    github_username: "{{ github_username | default(lookup('ini', 'GITHUB_USERNAME file=' + env_file + ' type=properties'), true) }}"
+    github_pat:       "{{ github_pat       | default(lookup('ini', 'GITHUB_PAT file=' + env_file + ' type=properties'), true) }}"
+    cf_tunnel_id:     "{{ cf_tunnel_id     | default(lookup('ini', 'CF_TUNNEL_ID file=' + env_file + ' type=properties'), true) }}"
+    cf_hostname:      "{{ cf_hostname      | default(lookup('ini', 'CF_HOSTNAME file=' + env_file + ' type=properties'), true) }}"
+    cf_tunnel_token:  "{{ cf_tunnel_token  | default(lookup('ini', 'CF_TUNNEL_TOKEN file=' + env_file + ' type=properties'), true) }}"
+  when: env_file is defined
+
+## 2) No env_file given, get from OS-env
+- name: Resolve variables from OS env when no env_file is provided
+  ansible.builtin.set_fact:
+    github_username: "{{ github_username | default(lookup('env','GITHUB_USERNAME'), true) }}"
+    github_pat:       "{{ github_pat       | default(lookup('env','GITHUB_PAT'), true) }}"
+    cf_tunnel_id:     "{{ cf_tunnel_id     | default(lookup('env','CF_TUNNEL_ID'), true) }}"
+    cf_hostname:      "{{ cf_hostname      | default(lookup('env','CF_HOSTNAME'), true) }}"
+    cf_tunnel_token:  "{{ cf_tunnel_token  | default(lookup('env','CF_TUNNEL_TOKEN'), true) }}"
+  when: env_file is not defined
+
+# Loud fail – explicit & clear
+- name: Assert GitHub tokens present
+  no_log: true
+  ansible.builtin.assert:
+    that:
+      - (github_username | default('')) | length > 0
+      - (github_pat       | default('')) | length > 0
+    fail_msg: "Missing GITHUB_USERNAME or GITHUB_PAT (via --extra-vars, env_file, of OS env)."
+
+- name: Assert CF_TUNNEL_TOKEN present when cloudflared is enabled
+  no_log: true
+  ansible.builtin.assert:
+    that:
+      - (cf_tunnel_token | default('')) | length > 0
+    fail_msg: "enable_cloudflared=true but CF_TUNNEL_TOKEN missing."
+  when: enable_cloudflared | default(false)
+
+# One global env that can be uses everywhere
+- name: Build global Compose env (CF)
+  ansible.builtin.set_fact:
+    compose_global_env: "{{ {'CF_TUNNEL_TOKEN': cf_tunnel_token} }}"
+  when: (enable_cloudflared | default(false)) | bool
+
+- name: Build global Compose env (empty when CF disabled)
+  ansible.builtin.set_fact:
+    compose_global_env: {}
+  when: not (enable_cloudflared | default(false)) | bool

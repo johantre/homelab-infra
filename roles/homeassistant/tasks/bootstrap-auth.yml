@@ -3,6 +3,8 @@
   command: >
     docker compose -p {{ ha_project }} -f {{ ha_stack_dir }}/docker-compose.yml exec -T {{ ha_container_name }}
     sh -lc 'curl -fsS http://127.0.0.1:8123/ || exit 1'
+  args:
+    chdir: "{{ ha_stack_dir }}"
   register: ha_ping
   retries: 30
   delay: 2
@@ -13,6 +15,8 @@
   command: >
     docker compose -p {{ ha_project }} -f {{ ha_stack_dir }}/docker-compose.yml exec -T {{ ha_container_name }}
     sh -lc 'python -m homeassistant --script auth -c /config list'
+  args:
+    chdir: "{{ ha_stack_dir }}"
   register: ha_auth_list
   changed_when: false
 
@@ -21,6 +25,8 @@
     docker compose -p {{ ha_project }} -f {{ ha_stack_dir }}/docker-compose.yml exec -T {{ ha_container_name }}
     sh -lc 'python -m homeassistant --script auth -c /config
             add {{ ha_user_username | quote }} {{ ha_user_fullname | quote }} --password {{ ha_user_password | quote }} --group system-admin'
+  args:
+    chdir: "{{ ha_stack_dir }}"
   when: ha_auth_list.stdout is search('Total users:\s*0')
   no_log: true
   run_once: true

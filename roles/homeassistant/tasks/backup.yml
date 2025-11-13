@@ -1,19 +1,115 @@
+---
+# CRITICAL: When backup tag is used, we MUST create a backup or FAIL LOUDLY
+- name: Assert backup is intentionally requested (fail if accidentally triggered)
+  ansible.builtin.assert:
+    that:
+      - "'backups' in ansible_run_tags or 'backup' in ansible_run_tags"
+    fail_msg: |
+      BACKUP TASK TRIGGERED WITHOUT EXPLICIT TAG!
+      Backups should only run when explicitly requested with --tags backups
+    success_msg: "Backup explicitly requested via tags - proceeding"
+  tags: [backups, always]
+
+- name: Compute backup filename (unique)
+  ansible.builtin.set_fact:
+    ha_backup_filename: "ha-config-{{ ansible_date_time.iso8601_basic_short }}.tar.gz"
+  tags: [backups]
+
+- name: Compute backup dest path
+  ansible.builtin.set_fact:
+    ha_backup_dest: "{{ ha_backups_dir }}/{{ ha_backup_filename }}"
+  tags: [backups]
+
 - name: Ensure backup dir exists
   ansible.builtin.file:
-    path: "{{ ha_stack_dir }}/backup"
+    path: "{{ ha_backups_dir }}"
     state: directory
     mode: "0750"
-  when: ha_backups_enabled | bool
   tags: [backups]
 
 - name: Create HA config backup tarball (light)
   community.general.archive:
     path:
       - "{{ ha_config_dir }}/"
-    dest: "{{ ha_stack_dir }}/backup/ha-config-{{ ansible_date_time.iso8601_basic_short }}.tar.gz"
+    dest: "{{ ha_backup_dest }}"
     format: gz
     exclude_path:
       - "{{ ha_config_dir }}/.storage/backups"
       - "{{ ha_config_dir }}/deps"
-  when: ha_backups_enabled | bool
+  register: _archive_out
+  tags: [backups]
+
+- name: Debug archive result (verify-first)
+  ansible.builtin.debug:
+    var: _archive_out
+  tags: [backups]
+
+- name: Stat created backup (verify on disk)
+  ansible.builtin.stat:
+    path: "{{ ha_backup_dest }}"
+  register: _bk_stat
+  tags: [backups]
+
+# FAIL HARD: If backup was requested but file doesn't exist or is empty
+- name: Assert backup file exists and is not empty (FAIL HARD)
+  ansible.builtin.assert:
+    that:
+      - _bk_stat.stat.exists
+      - _bk_stat.stat.size | int > 0
+    fail_msg: |
+      ❌ BACKUP FAILED! ❌
+      Expected backup at: {{ ha_backup_dest }}
+      File exists: {{ _bk_stat.stat.exists }}
+      File size: {{ _bk_stat.stat.size | default(0) }} bytes
+      
+      This is a CRITICAL failure - no backup was created!
+    success_msg: "✅ Backup created successfully: {{ ha_backup_dest }} ({{ _bk_stat.stat.size }} bytes)"
+  tags: [backups]
+
+- name: Show newest backup on target (proof)
+  ansible.builtin.shell: |
+    ls -1t {{ ha_backups_dir }}/ha-config-*.tar.gz | head -n1
+  register: _bk_latest
+  changed_when: false
+  tags: [backups]
+
+- name: Proof of backup
+  ansible.builtin.debug:
+    msg:
+      created: "{{ ha_backup_dest }}"
+      size: "{{ (_bk_stat.stat.size / 1024 / 1024) | round(2) }} MB"
+      newest_on_disk: "{{ _bk_latest.stdout | default('N/A') }}"
+  tags: [backups]
+
+- name: Find backups (files only, no recurse)
+  ansible.builtin.find:
+    paths: "{{ ha_backups_dir }}"
+    patterns: "ha-config-*.tar.gz"
+    file_type: file
+    recurse: no
+    use_regex: false
+  register: found_bk
+  tags: [backups]
+
+- name: Compute files to delete (keep newest 7)
+  ansible.builtin.set_fact:
+    bk_sorted_desc: "{{ found_bk.files | sort(attribute='mtime', reverse=True) }}"
+    bk_to_delete: "{{ (found_bk.files | sort(attribute='mtime', reverse=True))[7:] }}"
+  tags: [backups]
+
+- name: Prune old backups
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ bk_to_delete }}"
+  when:
+    - bk_to_delete | length > 0
+  tags: [backups]
+
+# (optional) small sanity-debug
+- name: Retention summary
+  ansible.builtin.debug:
+    msg:
+      kept: "{{ (bk_sorted_desc | map(attribute='path'))[:7] }}"
+      deleted: "{{ bk_to_delete | map(attribute='path') | list }}"
   tags: [backups]

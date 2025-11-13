@@ -28,55 +28,36 @@
     mode: "0644"
   tags: [ha_update, containers_update]
 
+## Single source of truth for env
+- name: Bootstrap env (single source of truth)
+  ansible.builtin.import_tasks: env_boot.yml
+  tags: [always, containers_update]
+
 # Pull + up ONLY homeassistant (faster/safer); if needed, put back to "all services" if you want
-- name: Docker compose pull (homeassistant)
-  ansible.builtin.command:
-    cmd: >
-      docker compose
-      -p {{ ha_stack_name | default('ha-stack-ansible') | quote }}
-      -f {{ ha_stack_dir }}/docker-compose.yml
-      pull {{ ha_container_name | default('homeassistant') }}
-  args:
-    chdir: "{{ ha_stack_dir }}"
-  register: ha_pull
-  changed_when: "'Downloaded' in (ha_pull.stdout | default('') ~ ha_pull.stderr | default(''))"
-  tags: [ha_update, containers_update]
-
-- name: Docker compose up -d (homeassistant)
-  ansible.builtin.command:
-    cmd: >
-      docker compose
-      -p {{ ha_stack_name | default('ha-stack-ansible') | quote }}
-      -f {{ ha_stack_dir }}/docker-compose.yml
-      up -d {{ ha_container_name | default('homeassistant') }}
-  args:
-    chdir: "{{ ha_stack_dir }}"
-  register: ha_up
-  changed_when: >
-    ( (ha_up.stdout|default('') ~ ha_up.stderr|default(''))
-      | regex_search('Recreated|Recreating|Created|Creating|Starting') ) is not none
-  tags: [ha_update, containers_update]
-
 - name: Docker compose pull (all services)
-  command: >
-    docker compose
-    -p {{ ha_stack_name | default('ha-stack-ansible') | quote }}
-    -f {{ ha_stack_dir }}/docker-compose.yml
-    pull
+  ansible.builtin.command:
+    cmd: >
+      docker compose
+      -p {{ ha_project | default('ha-stack-ansible') | quote }}
+      -f {{ ha_stack_dir }}/docker-compose.yml
+      pull
   args:
     chdir: "{{ ha_stack_dir }}"
-  register: compose_pull
-  changed_when: "'Downloaded' in (compose_pull.stdout | default('') ~ compose_pull.stderr | default(''))"
+  environment: "{{ compose_global_env | mandatory('compose_global_env undefined — env_boot skipped or failed') }}"
+  register: ha_pull
+  changed_when: ha_pull.stdout | default('') ~ ha_pull.stderr | default('') is search('Downloaded') | bool
+  tags: [ ha_update, containers_update ]
 
-- name: Docker compose up -d (recreate if image changed)
-  command: >
-    docker compose
-    -p {{ ha_stack_name | default('ha-stack-ansible') | quote }}
-    -f {{ ha_stack_dir }}/docker-compose.yml
-    up -d
+- name: Docker compose up -d (all services)
+  ansible.builtin.command:
+    cmd: >
+      docker compose
+      -p {{ ha_project | default('ha-stack-ansible') | quote }}
+      -f {{ ha_stack_dir }}/docker-compose.yml
+      up -d
   args:
     chdir: "{{ ha_stack_dir }}"
-  register: compose_up
-  changed_when: >
-    ( (compose_up.stdout|default('') ~ compose_up.stderr|default(''))
-      | regex_search('Recreated|Recreating|Created|Creating|Starting') ) is not none
+  environment: "{{ compose_global_env | mandatory('compose_global_env undefined — env_boot skipped or failed') }}"
+  register: ha_up
+  changed_when: ha_up.stdout | default('') ~ ha_up.stderr | default('') is search('(?i)(recreated|recreating|created|creating|starting)') | bool
+  tags: [ha_update, containers_update]

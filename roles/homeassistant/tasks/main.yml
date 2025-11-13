@@ -46,43 +46,10 @@
   ansible.builtin.setup:
     gather_subset: ['min']
 
-# Resolve sensitive vars from either a provided .env (local) or CI env/extra-vars (pipeline)
-# If env_file is provided → read from .env (dotenv/properties)
-- name: Load required vars from .env when env_file is provided
-  ansible.builtin.set_fact:
-    github_username: "{{ lookup('ini', 'GITHUB_USERNAME file=' + env_file + ' type=properties') }}"
-    github_pat:       "{{ lookup('ini', 'GITHUB_PAT file='       + env_file + ' type=properties') }}"
-    cf_tunnel_id:     "{{ lookup('ini', 'CF_TUNNEL_ID file='     + env_file + ' type=properties') }}"
-    cf_hostname:      "{{ lookup('ini', 'CF_HOSTNAME file='      + env_file + ' type=properties') }}"
-    cf_tunnel_token:  "{{ lookup('ini', 'CF_TUNNEL_TOKEN file='  + env_file + ' type=properties') }}"
-  when: env_file is defined
-
-# If env_file is NOT provided → pull from OS env or passed -e vars (CI-friendly)
-- name: Load required vars from OS environment when no env_file is provided
-  ansible.builtin.set_fact:
-    github_username: "{{ github_username | default(lookup('env','GITHUB_USERNAME'), true) }}"
-    github_pat:       "{{ github_pat       | default(lookup('env','GITHUB_PAT'), true) }}"
-    cf_tunnel_id:     "{{ cf_tunnel_id     | default(lookup('env','CF_TUNNEL_ID'), true) }}"
-    cf_hostname:      "{{ cf_hostname      | default(lookup('env','CF_HOSTNAME'), true) }}"
-    cf_tunnel_token:  "{{ cf_tunnel_token  | default(lookup('env','CF_TUNNEL_TOKEN'), true) }}"
-  when: env_file is not defined
-
-# Fast fail for token mode
-- name: Assert GitHub tokens present (local & CI)
-  no_log: true
-  ansible.builtin.assert:
-    that:
-      - (github_username | default('')) | length > 0
-      - (github_pat       | default('')) | length > 0
-    fail_msg: "Missing GITHUB_USERNAME or GITHUB_PAT (expected via env_file of -e)."
-
-- name: Assert CF_TUNNEL_TOKEN present when cloudflared enabled
-  no_log: true
-  ansible.builtin.assert:
-    that:
-      - (cf_tunnel_token | default('')) | length > 0
-    fail_msg: "enable_cloudflared=true but CF_TUNNEL_TOKEN is missing."
-  when: (enable_cloudflared | default(false))
+## Single source of truth for env + hard asserts
+- name: Bootstrap env (single source of truth)
+  ansible.builtin.import_tasks: env_boot.yml
+  tags: [always]
 
 # Optional: ensure the current user is in the docker group (needs re-login)
 - name: Ensure user is in 'docker' group (requires re-login to take effect)
@@ -152,7 +119,17 @@
     apply:
       tags:
         - backup
-  tags: [backup]
+  tags: [backups, never]
+
+# Restore opt-in via tags (propagate tag to included tasks)
+- name: Include restore (opt-in via tags)
+  include_tasks:
+    file: restore.yml
+    apply:
+      tags:
+        - restore
+  tags: [restore, never]
+  when: "'ha_target' in group_names"
 
 - name: Sync repo → ha_config_dir
   ansible.builtin.command: >
@@ -245,9 +222,9 @@
 - name: Derive ha_effective_version (lock > discovered)
   ansible.builtin.set_fact:
     ha_effective_version: >-
-      {{ ha_version_locked | default(ha_version_discovered) }}
+      {{ ha_version_locked | default(ha_version) }}
 
-- name: Bootstrap lock file on first run (pin to discovered version)
+- name: Bootstrap lock file on first run (pin to ha_version_locked or ha_version)
   ansible.builtin.copy:
     dest: "{{ ha_stack_dir }}/.ha_version.lock"
     mode: "0644"
@@ -272,13 +249,12 @@
   ansible.builtin.command:
     cmd: >
       docker compose
-      -p {{ ha_stack_name | default('ha-stack-ansible') | quote }}
+      -p {{ ha_project | default('ha-stack-ansible') | quote }}
       -f {{ ha_stack_dir }}/docker-compose.yml
       up -d
   args:
     chdir: "{{ ha_stack_dir }}"
-  environment:
-    CF_TUNNEL_TOKEN: "{{ cf_tunnel_token | default(lookup('env','CF_TUNNEL_TOKEN'), true) | default(omit) }}"
+  environment: "{{ compose_global_env }}"
   register: compose_up
   changed_when: false
 

@@ -52,6 +52,32 @@ This copies the default public key to ~/.ssh/id_ed25519.pub file to ~/.ssh/autho
     ansible -i inventories/hosts ha_target -m shell \
       -a 'ls -lt "$HOME/homelab/target/ha-stack-ansible/backup" | head -n 3'
 
+**restore backup**\
+(ha-config-20251105T165427.tar.gz as example)
+
+    # W/o restore playbook
+    ansible -i inventories/hosts ha_target -m shell -a \
+    'tar -xzf /home/ubuntu/homelab/target/ha-stack-ansible/backup/ha-config-20251105T165427.tar.gz \
+    -C /home/ubuntu/homelab/target/homeassistant-ansible \
+    --strip-components=1'
+
+    # With restore playbook + specific backup restore
+    ansible-playbook -i inventories/hosts site.yml -l ha_target \
+    -e env_file=../.env \
+    --tags restore \
+    -e ha_restore_backup=ha-config-20251105T165427.tar.gz
+    
+    # With restore playbook + last backup restore
+    ansible-playbook -i inventories/hosts site.yml -l ha_target \
+    -e env_file=../.env \
+    --tags restore
+
+    # Skip confirmation prompt (for automation later)
+    ansible-playbook -i inventories/hosts site.yml -l ha_target \
+    -e env_file=../.env \
+    --tags restore \
+    -e ha_restore_confirm=false
+
 ### HA Update
 **first run for bootstrapping**
 
@@ -70,6 +96,12 @@ This copies the default public key to ~/.ssh/id_ed25519.pub file to ~/.ssh/autho
     ansible -i inventories/hosts ha_target -m copy \
       -a 'dest="{{ ha_stack_dir }}/.ha_version.lock" mode=0644 content="2025.10.3\n"'
     ansible-playbook -i inventories/hosts site.yml -l ha_target --tags ha_update
+
+### Debugging
+**list what ansible _thinks_ going to execute, eg:**
+
+    ansible-playbook -i inventories/hosts site.yml -l ha_target -e env_file=../.env \
+    --tags backups --list-tags --list-tasks
 
 ## On target node 
 ### Stopping target
