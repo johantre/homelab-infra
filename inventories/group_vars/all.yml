@@ -60,3 +60,8 @@ service_data_dirs:
   - "{{ code_server_data_dir }}"
   - "{{ ssh_data_dir }}"
   - "{{ esphome_data_dir }}"
+
+tz: "Europe/Brussels"
+enable_target_passwordless_sudo: true
+ha_bootstrap_enable: true
+manage_docker_group: false

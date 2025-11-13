@@ -1,7 +1,7 @@
 services:
-  {{ ha_container_name | default('homeassistant') }}:
+  {{ ha_container_name }}:
     image: "ghcr.io/home-assistant/home-assistant:{{ ha_effective_version }}"
-    container_name: "{{ ha_container_name | default('homeassistant') }}"
+    container_name: "{{ ha_container_name }}"
     user: "{{ runtime_uid }}:{{ runtime_gid }}"
     privileged: true
     restart: unless-stopped
@@ -12,7 +12,7 @@ services:
     network_mode: "host"
 {% else %}
     ports:
-      - "{{ ha_host_port | default(8123) }}:8123"
+      - "{{ ha_host_port }}:8123"
 {% endif %}
 {% if enable_cloudflared | default(false) %}
   cloudflared:
@@ -20,7 +20,7 @@ services:
     user: "{{ runtime_uid }}:{{ runtime_gid }}"
     restart: unless-stopped
     depends_on:
-      - {{ ha_container_name | default('homeassistant') }}
+      - {{ ha_container_name }}
     command: tunnel --no-autoupdate run --token ${CF_TUNNEL_TOKEN}
     environment:
       - CF_TUNNEL_TOKEN=${CF_TUNNEL_TOKEN}
@@ -34,7 +34,7 @@ services:
     depends_on:
       - {{ ha_container_name }}
     environment:
-      - TZ={{ tz | default("Europe/Brussels") }}
+      - TZ={{ tz }}
     # NOTE: For local USB flashing add devices below (uncomment if needed)
     # devices:
     #   - /dev/ttyUSB0:/dev/ttyUSB0
@@ -55,7 +55,7 @@ services:
     environment:
       - PUID={{ runtime_uid }}
       - PGID={{ runtime_gid }}
-      - TZ={{ tz | default("Europe/Brussels") }}
+      - TZ={{ tz }}
       # Password auth for web UI (keep it in .env if you prefer)
       - PASSWORD={{ ha_user_password }}
       # - SUDO_PASSWORD={{ ha_user_password }}  # enable sudo inside container if needed
@@ -77,7 +77,7 @@ services:
     environment:
       - PUID={{ runtime_uid }}
       - PGID={{ runtime_gid }}
-      - TZ={{ tz | default("Europe/Brussels") }}
+      - TZ={{ tz }}
       - PUBLIC_KEY_FILE=/config/.ssh/authorized_keys   # optional, if you add a key file
       - PASSWORD_ACCESS=true
       - USER_NAME={{ ha_user_username }}

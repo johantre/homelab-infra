@@ -38,7 +38,7 @@
   ansible.builtin.command:
     cmd: >
       docker compose
-      -p {{ ha_project | default('ha-stack-ansible') | quote }}
+      -p {{ ha_project | quote }}
       -f {{ ha_stack_dir }}/docker-compose.yml
       pull
   args:
@@ -52,7 +52,7 @@
   ansible.builtin.command:
     cmd: >
       docker compose
-      -p {{ ha_project | default('ha-stack-ansible') | quote }}
+      -p {{ ha_project | quote }}
       -f {{ ha_stack_dir }}/docker-compose.yml
       up -d
   args:

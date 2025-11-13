@@ -37,6 +37,10 @@ towards:
     ansible -i inventories/hosts ha_target \
     -m ansible.builtin.shell \
     -a 'docker compose -p ha-stack-ansible -f "$HOME/homelab/target/ha-stack-ansible/docker-compose.yml" up -d'
+### Cleanup target
+
+    ansible -i inventories/hosts ha_target -b -m shell   -a "rm -rf /home/ubuntu/homelab/target/*"
+
 ### Copy ssh key to target default location
 This copies the default public key to ~/.ssh/id_ed25519.pub file to ~/.ssh/authorized_keys file immediately with the right permissions.
 

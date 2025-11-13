@@ -76,7 +76,7 @@
   ansible.builtin.command:
     cmd: >
       docker compose
-      -p {{ ha_project | default('ha-stack-ansible') | quote }}
+      -p {{ ha_project | quote }}
       -f {{ ha_stack_dir }}/docker-compose.yml
       down
   args:
@@ -131,7 +131,7 @@
   ansible.builtin.command:
     cmd: >
       docker compose
-      -p {{ ha_project | default('ha-stack-ansible') | quote }}
+      -p {{ ha_project | quote }}
       -f {{ ha_stack_dir }}/docker-compose.yml
       up -d
   args:
@@ -148,7 +148,7 @@
 
 - name: Wait for HA to be ready (health check)
   ansible.builtin.uri:
-    url: "http://localhost:{{ ha_host_port | default(8123) }}/"
+    url: "http://localhost:{{ ha_host_port }}/"
     status_code: 200
     timeout: 5
   register: _ha_health
@@ -173,5 +173,5 @@
       - "Restored from: {{ _restore_file }}"
       - "HA Status: {{ 'Running' if _ha_health.status == 200 else 'Check manually' }}"
       - "Cloudflared: {{ 'Running' if (_cf_running.stdout | default('') | length > 0) else 'Not running (check logs)' }}"
-      - "Access HA at: http://localhost:{{ ha_host_port | default(8123) }}"
+      - "Access HA at: http://localhost:{{ ha_host_port }}"
   tags: [restore]
