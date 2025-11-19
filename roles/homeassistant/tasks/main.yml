@@ -135,6 +135,8 @@
   ansible.builtin.stat:
     path: "{{ ha_config_repo_dir }}"
   register: _src
+  delegate_to: localhost
+  run_once: true
 
 - name: Fail if source repo dir missing
   ansible.builtin.fail:
@@ -175,12 +177,28 @@
   tags: [restore, never]
   when: "'ha_target' in group_names"
 
-- name: Sync repo → ha_config_dir
+- name: Sync repo from controller → target (ha_target group)
+  ansible.posix.synchronize:
+    src: "{{ lookup('env', 'HOME') }}/homelab/config/homeassistant/"
+    dest: "{{ ha_config_dir }}/"
+    delete: yes
+    compress: yes
+    rsync_opts:
+      - "--no-owner"
+      - "--no-group"
+      - "--no-perms"
+      - "--omit-dir-times"
+      - "--exclude=.storage/backups/"
+      - "--exclude=deps/"
+  when: "'ha_target' in group_names"
+
+- name: Sync repo locally (ha group)
   ansible.builtin.command: >
-     rsync -a --delete --no-owner --no-group --no-perms --omit-dir-times
-            --exclude=".storage/backups/" --exclude="deps/"
-            {{ ha_config_repo_dir }}/
-            {{ ha_config_dir }}/
+    rsync -a --delete --no-owner --no-group --no-perms --omit-dir-times
+           --exclude=".storage/backups/" --exclude="deps/"
+           {{ lookup('env', 'HOME') }}/homelab/config/homeassistant/
+           {{ ha_config_dir }}/
+  when: "'ha' in group_names"
   changed_when: false
 
 # Debug which directory we validate (helps in local vs CI)
