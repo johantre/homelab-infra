@@ -113,12 +113,7 @@ This copies the default public key to ~/.ssh/id_ed25519.pub file to ~/.ssh/autho
 
 # TODO's:
 * Attention for need for sudo pass **first time** to set nopassword!
-* Move to GitHub actions as controller w Tailscale/WireGuard (complete hands-off)
-* Fix this with hands-off installation media with 2 volumes, or 3 volumes 
-  * Latest Ubuntu Server installer
-  * on separate volume CIDATA met user-data + meta-data \
-  that assures ssh-server, docker, git, mac-randomization off... NOPASSWD is configured during silent ubuntu install/flash.
-  * OR with network seed, w/o CIDATA volume
+* Move to GitHub actions as controller but with self-hosted runners on the target node
   * extra volume for local backups
 * Deployment from fresh ubuntu flashed disk
 * Test deployment is working
