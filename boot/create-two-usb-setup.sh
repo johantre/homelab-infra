@@ -30,10 +30,15 @@ check_dependencies() {
 }
 
 get_latest_desktop_iso() {
-    local arch=$1  # "amd64" or "arm64"
+    local arch=$1     # "amd64" or "arm64"
+    local lts_only=$2 # "yes" or "no"
     
     # ALL debug output goes to stderr (&2)
-    echo -e "${BLUE}Fetching latest Ubuntu Desktop version for $arch...${NC}" >&2
+    if [[ "$lts_only" == "yes" ]]; then
+        echo -e "${BLUE}Fetching latest LTS Ubuntu Desktop version for $arch...${NC}" >&2
+    else
+        echo -e "${BLUE}Fetching latest Ubuntu Desktop version for $arch...${NC}" >&2
+    fi
     
     if [[ "$arch" == "amd64" ]]; then
         # x86_64
@@ -49,16 +54,33 @@ get_latest_desktop_iso() {
         
         echo -e "${YELLOW}[DEBUG] Page fetched, length: ${#releases_page} chars${NC}" >&2
         
-        local latest_version=$(echo "$releases_page" | \
+        # Extract versions
+        local all_versions=$(echo "$releases_page" | \
             grep -oE 'href="[0-9]+\.[0-9]+(\.[0-9]+)?/"' | \
             grep -oE '[0-9]+\.[0-9]+(\.[0-9]+)?' | \
-            sort -Vr | head -1)
+            sort -Vr)
+
+        # Filter for LTS if requested (x.04 versions)
+        local latest_version
+        if [[ "$lts_only" == "yes" ]]; then
+            latest_version=$(echo "$all_versions" | grep '\.04' | head -1)
+            echo -e "${YELLOW}[DEBUG] Filtering for LTS versions only${NC}" >&2
+        else
+            latest_version=$(echo "$all_versions" | head -1)
+        fi
         
         echo -e "${YELLOW}[DEBUG] Extracted version: '$latest_version'${NC}" >&2
         
         if [[ -z "$latest_version" ]]; then
-            echo -e "${YELLOW}[WARNING] Could not extract version, using fallback: 24.04.2${NC}" >&2
-            latest_version="24.04.2"
+            echo -e "${YELLOW}[WARNING] Could not extract version, using fallback: 24.04${NC}" >&2
+            latest_version="24.04"
+        fi
+
+        # Check if it's LTS
+        if [[ "$latest_version" =~ \.04 ]]; then
+            echo -e "${GREEN}[INFO] Selected: $latest_version (LTS)${NC}" >&2
+        else
+            echo -e "${YELLOW}[INFO] Selected: $latest_version (non-LTS, 9 months support)${NC}" >&2
         fi
         
         local iso_url="https://releases.ubuntu.com/${latest_version}/ubuntu-${latest_version}-desktop-amd64.iso"
@@ -76,9 +98,10 @@ get_latest_desktop_iso() {
         
     else
         # ARM64
-        echo -e "${YELLOW}[DEBUG] Fetching from: https://cdimage.ubuntu.com/releases/24.04.2/release/${NC}" >&2
+        echo -e "${YELLOW}[DEBUG] Fetching from: https://cdimage.ubuntu.com/releases/24.04/release/${NC}" >&2
         
-        local cdimage_page=$(curl -s "https://cdimage.ubuntu.com/releases/24.04.2/release/" 2>&1)
+        # For ARM, we'll check the 24.04 LTS directory which usually has latest
+        local cdimage_page=$(curl -s "https://cdimage.ubuntu.com/releases/24.04/release/" 2>&1)
         local curl_exit=$?
         
         if [[ $curl_exit -ne 0 ]]; then
@@ -95,11 +118,14 @@ get_latest_desktop_iso() {
         echo -e "${YELLOW}[DEBUG] Extracted ISO: '$latest_iso'${NC}" >&2
         
         if [[ -z "$latest_iso" ]]; then
-            echo -e "${YELLOW}[WARNING] Could not extract ISO, using fallback: ubuntu-24.04.3-desktop-arm64.iso${NC}" >&2
-            latest_iso="ubuntu-24.04.3-desktop-arm64.iso"
+            echo -e "${YELLOW}[WARNING] Could not extract ISO, using fallback: ubuntu-24.04.1-desktop-arm64.iso${NC}" >&2
+            latest_iso="ubuntu-24.04.1-desktop-arm64.iso"
         fi
         
-        local iso_url="https://cdimage.ubuntu.com/releases/24.04.2/release/${latest_iso}"
+        # ARM desktop is typically LTS-based
+        echo -e "${GREEN}[INFO] Selected: $latest_iso (LTS)${NC}" >&2
+
+        local iso_url="https://cdimage.ubuntu.com/releases/24.04/release/${latest_iso}"
         local iso_name="$latest_iso"
         
         echo -e "${YELLOW}[DEBUG] Constructed URL: $iso_url${NC}" >&2
@@ -183,8 +209,19 @@ esac
 echo -e "${GREEN}Selected: $ARCH${NC}"
 echo
 
+# Ask for LTS preference
+echo -e "${BLUE}Ubuntu Version Type:${NC}"
+echo "  ${GREEN}LTS${NC} (Long Term Support): 5 years of updates - recommended for production"
+echo "  ${YELLOW}Latest${NC}: Newest features, 9 months support - for testing/development"
+echo
+echo -ne "${YELLOW}Prefer LTS versions only? (yes/no) [yes]: ${NC}"
+read LTS_ONLY
+LTS_ONLY=${LTS_ONLY:-yes}
+
+echo
+
 # Fetch latest ISO info
-ISO_INFO=$(get_latest_desktop_iso "$ARCH_API")
+ISO_INFO=$(get_latest_desktop_iso "$ARCH_API" "$LTS_ONLY")
 ISO_RESULT=$?
 
 if [[ $ISO_RESULT -ne 0 ]]; then
@@ -382,7 +419,7 @@ else
 fi
 
 # Ensure openssh-server
-echo -e "${GREEN}[4/4] Checking SSH server...${NC}"
+echo -e "${GREEN}[4/6] Checking SSH server...${NC}"
 if ! systemctl is-active --quiet ssh; then
     echo -e "   ${YELLOW}Installing openssh-server...${NC}"
     apt-get update -qq
@@ -393,6 +430,131 @@ if ! systemctl is-active --quiet ssh; then
 else
     echo -e "   ${GREEN}✓${NC} SSH server already running"
 fi
+
+# Disk partitioning for backup partition
+echo -e "${GREEN}[5/6] Checking disk partitioning...${NC}"
+
+# Find the root disk (not partition)
+ROOT_DISK=$(lsblk -no PKNAME $(findmnt -n -o SOURCE /))
+
+if [ -z "$ROOT_DISK" ]; then
+    echo -e "${YELLOW}[WARNING] Could not detect root disk, skipping partitioning${NC}"
+else
+    echo -e "${BLUE}Detected root disk: /dev/$ROOT_DISK${NC}"
+
+    # Get total disk size in GB
+    DISK_SIZE_BYTES=$(lsblk -bdn -o SIZE "/dev/$ROOT_DISK")
+    DISK_SIZE_GB=$((DISK_SIZE_BYTES / 1024 / 1024 / 1024))
+
+    echo -e "${BLUE}Total disk size: ${DISK_SIZE_GB}GB${NC}"
+
+    # Check if backup partition already exists
+    BACKUP_PART=$(lsblk -ln -o NAME,LABEL "/dev/$ROOT_DISK" | grep -i backup | awk '{print $1}')
+
+    if [ -n "$BACKUP_PART" ]; then
+        echo -e "${YELLOW}   Backup partition already exists: /dev/$BACKUP_PART${NC}"
+        echo -e "${YELLOW}   Skipping partitioning${NC}"
+    else
+        echo -e "${YELLOW}No backup partition found${NC}"
+        echo
+        echo -e "${BLUE}Would you like to create a backup partition?${NC}"
+        echo -e "${YELLOW}This will:${NC}"
+        echo "  1. Shrink the root partition to specified size"
+        echo "  2. Create a new partition for backups with remaining space"
+        echo "  3. Format and mount the backup partition at /mnt/backup"
+        echo
+        echo -e "${RED}WARNING: This operation carries some risk. Ensure you have backups!${NC}"
+        echo
+        read -p "Create backup partition? (yes/no) [no]: " CREATE_BACKUP
+
+        if [[ "$CREATE_BACKUP" == "yes" ]]; then
+            # Suggest size based on disk size
+            if [ $DISK_SIZE_GB -lt 256 ]; then
+                SUGGESTED_SIZE="50"
+            elif [ $DISK_SIZE_GB -lt 1000 ]; then
+                SUGGESTED_SIZE="80"
+            else
+                SUGGESTED_SIZE="100"
+            fi
+
+            echo
+            echo -e "${BLUE}Current disk usage:${NC}"
+            df -h / | grep -v Filesystem
+
+            echo
+            read -p "Ubuntu partition size in GB [${SUGGESTED_SIZE}]: " UBUNTU_SIZE
+            UBUNTU_SIZE=${UBUNTU_SIZE:-$SUGGESTED_SIZE}
+
+            # Validate input
+            if ! [[ "$UBUNTU_SIZE" =~ ^[0-9]+$ ]]; then
+                echo -e "${RED}Invalid size, skipping partitioning${NC}"
+            elif [ "$UBUNTU_SIZE" -lt 30 ]; then
+                echo -e "${RED}Size too small (minimum 30GB), skipping${NC}"
+            elif [ "$UBUNTU_SIZE" -ge $DISK_SIZE_GB ]; then
+                echo -e "${RED}Size too large, skipping${NC}"
+            else
+                echo -e "${YELLOW}Will create: ${UBUNTU_SIZE}GB Ubuntu + $((DISK_SIZE_GB - UBUNTU_SIZE))GB backup${NC}"
+                echo
+                read -p "Proceed? (yes/no) [no]: " CONFIRM_PARTITION
+
+                if [[ "$CONFIRM_PARTITION" == "yes" ]]; then
+                    echo -e "${BLUE}Starting partitioning process...${NC}"
+
+                    # Install required tools
+                    apt-get install -y -qq parted e2fsprogs
+
+                    # Resize root filesystem
+                    echo -e "   ${YELLOW}Step 1/5: Checking filesystem...${NC}"
+                    e2fsck -f -y $(findmnt -n -o SOURCE /) || true
+
+                    echo -e "   ${YELLOW}Step 2/5: Resizing filesystem to ${UBUNTU_SIZE}GB...${NC}"
+                    resize2fs $(findmnt -n -o SOURCE /) ${UBUNTU_SIZE}G
+
+                    # Get root partition number
+                    ROOT_PART=$(findmnt -n -o SOURCE / | sed 's/[^0-9]*//g')
+
+                    echo -e "   ${YELLOW}Step 3/5: Resizing partition...${NC}"
+                    parted /dev/$ROOT_DISK resizepart $ROOT_PART ${UBUNTU_SIZE}GB
+
+                    echo -e "   ${YELLOW}Step 4/5: Creating backup partition...${NC}"
+                    BACKUP_PART_NUM=$((ROOT_PART + 1))
+                    parted /dev/$ROOT_DISK mkpart primary ext4 ${UBUNTU_SIZE}GB 100%
+
+                    # Wait for kernel to recognize new partition
+                    sleep 2
+                    partprobe /dev/$ROOT_DISK
+                    sleep 2
+
+                    echo -e "   ${YELLOW}Step 5/5: Formatting backup partition...${NC}"
+                    mkfs.ext4 -L backup /dev/${ROOT_DISK}${BACKUP_PART_NUM}
+
+                    # Create mount point and mount
+                    mkdir -p /mnt/backup
+                    mount /dev/${ROOT_DISK}${BACKUP_PART_NUM} /mnt/backup
+
+                    # Add to fstab
+                    if ! grep -q "/mnt/backup" /etc/fstab; then
+                        echo "LABEL=backup /mnt/backup ext4 defaults 0 2" >> /etc/fstab
+                    fi
+
+                    # Set permissions
+                    chown ${ACTUAL_USER}:${ACTUAL_USER} /mnt/backup
+                    chmod 755 /mnt/backup
+
+                    echo -e "   ${GREEN}✓${NC} Backup partition created and mounted at /mnt/backup"
+                    df -h /mnt/backup
+                else
+                    echo -e "${YELLOW}   Partitioning skipped${NC}"
+                fi
+            fi
+        else
+            echo -e "${YELLOW}   Partitioning skipped${NC}"
+        fi
+    fi
+fi
+
+echo -e "${GREEN}[6/6] Final system check...${NC}"
+echo -e "   ${GREEN}✓${NC} Configuration complete"
 
 # Optional configurations (commented out)
 echo
