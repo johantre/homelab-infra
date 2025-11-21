@@ -737,10 +737,7 @@ echo -e "${RED}╚════════════════════�
 echo
 echo -e "${YELLOW}This script contains sensitive data (SSH key, GitHub PAT).${NC}"
 echo
-read -p "Self-destruct this script in 5 seconds? (yes/no) [yes]: " SELF_DESTRUCT
-SELF_DESTRUCT=${SELF_DESTRUCT:-yes}
-
-if [[ "$SELF_DESTRUCT" == "yes" ]]; then
+read -p "This script will self-destruct in 5 seconds"
     echo
     echo -e "${RED}Initiating self-destruct sequence...${NC}"
     for i in 5 4 3 2 1; do
@@ -751,10 +748,6 @@ if [[ "$SELF_DESTRUCT" == "yes" ]]; then
     SCRIPT_PATH="${BASH_SOURCE[0]}"
     rm -f "$SCRIPT_PATH"
     echo -e "${GREEN}✓ Sensitive data removed${NC}"
-else
-    echo -e "${YELLOW}⚠️  Script preserved. Remember to delete manually!${NC}"
-    echo -e "${YELLOW}   Location: ${BASH_SOURCE[0]}${NC}"
-fi
 
 SETUP_EOF
 
