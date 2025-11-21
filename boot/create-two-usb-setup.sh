@@ -652,11 +652,14 @@ if [ -n "$GH_PAT" ] && [ "$GH_PAT" != "SKIP" ]; then
             if [ -n "$EXISTING_IDS" ]; then
                 echo -e "   ${YELLOW}Found existing runner(s) named ${RUNNER_NAME} in GitHub, deleting...${NC}"
                 for id in $EXISTING_IDS; do
+                    echo -e "   ${YELLOW}   - Deleting runner ID ${id}${NC}"
                     sudo -u ${ACTUAL_USER} gh api \
                         --method DELETE \
                         "/repos/${GH_USER}/${GH_REPO}/actions/runners/${id}" \
                         >/dev/null 2>&1 || true
                 done
+            else
+                echo -e "   ${YELLOW}No existing GitHub runners named ${RUNNER_NAME} found, nothing to delete${NC}"
             fi
 
             # Register new runner
@@ -722,7 +725,7 @@ fi
 echo
 echo -e "${YELLOW}Next steps:${NC}"
 echo "  1. Reboot the machine"
-echo "  2. SSH in: ${BLUE}ssh ${ACTUAL_USER}@HOSTNAME_PLACEHOLDER.local${NC}"
+echo "  2. SSH in: ssh ${ACTUAL_USER}@HOSTNAME_PLACEHOLDER.local"
 if [ -n "$GH_PAT" ] && [ "$GH_PAT" != "SKIP" ]; then
     echo "  3. Trigger GitHub workflows to deploy with Ansible"
 else
