@@ -641,10 +641,29 @@ if [ -n "$GH_PAT" ] && [ "$GH_PAT" != "SKIP" ]; then
         if [ -f ".runner" ]; then
             echo -e "   ${YELLOW}Runner already configured, skipping config.sh${NC}"
         else
+            RUNNER_NAME="$(hostname)"
+
+            # Remove any existing runners in GitHub with the same name
+            EXISTING_IDS=$(sudo -u ${ACTUAL_USER} gh api \
+                /repos/${GH_USER}/${GH_REPO}/actions/runners \
+                --paginate \
+                -q '.runners[] | select(.name=="'"${RUNNER_NAME}"'") | .id' || true)
+
+            if [ -n "$EXISTING_IDS" ]; then
+                echo -e "   ${YELLOW}Found existing runner(s) named ${RUNNER_NAME} in GitHub, deleting...${NC}"
+                for id in $EXISTING_IDS; do
+                    sudo -u ${ACTUAL_USER} gh api \
+                        --method DELETE \
+                        "/repos/${GH_USER}/${GH_REPO}/actions/runners/${id}" \
+                        >/dev/null 2>&1 || true
+                done
+            fi
+
+            # Register new runner
             sudo -u ${ACTUAL_USER} ./config.sh \
                 --url "$GH_REPO_URL" \
                 --token "$RUNNER_TOKEN" \
-                --name "$(hostname)" \
+                --name "${RUNNER_NAME}" \
                 --labels "self-hosted,linux,$(uname -m)" \
                 --unattended
         fi
