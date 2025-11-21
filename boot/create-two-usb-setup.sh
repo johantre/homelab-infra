@@ -737,7 +737,7 @@ echo -e "${RED}╚════════════════════�
 echo
 echo -e "${YELLOW}This script contains sensitive data (SSH key, GitHub PAT).${NC}"
 echo
-read -p "This script will self-destruct in 5 seconds"
+echo -e "${RED}This script will self-destruct in 5 seconds${NC}"
     echo
     echo -e "${RED}Initiating self-destruct sequence...${NC}"
     for i in 5 4 3 2 1; do
