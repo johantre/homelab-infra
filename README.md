@@ -3,8 +3,18 @@ This playbook has the purpose of deploying running home infrastructure.
 Ansible (playbooks, roles, inventory, docker compose templates)
 
 # Conventions
-* controller: node where the ansible script is running from
-* target: node to deploy to
+* controller node: where the ansible script is running from
+* target node: to deploy to
+
+# Script in infra/boot folder
+* Interactive script acquiring several parameters to 
+    * Flashes Ubuntu USB stick for installation (amd64/arm64, latest LTS/non-LTS)
+    * Flashes script for post-installation setting/installing/registering
+        * hostname
+        * ssh pub key
+        * GitHub repo info
+        * GitHub self-hosted runner to run Ansible on target node
+        * self-destruction after first run (sensitive data)
 
 # Hard dependencies
 * The following private repo is being used for deployment:  

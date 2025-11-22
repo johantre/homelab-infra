@@ -588,7 +588,7 @@ if [ -n "$GH_PAT" ] && [ "$GH_PAT" != "SKIP" ]; then
 
     # Now update apt with the key in place
     apt-get update -qq
-    apt-get install -y -qq gh jq
+    apt-get install -y -qq gh jq wget
 
     # Authenticate with PAT
     echo -e "   ${YELLOW}Authenticating with GitHub...${NC}"
@@ -624,10 +624,10 @@ if [ -n "$GH_PAT" ] && [ "$GH_PAT" != "SKIP" ]; then
         RUNNER_VERSION=$(curl -s https://api.github.com/repos/actions/runner/releases/latest | jq -r .tag_name | sed 's/v//')
         RUNNER_FILE="actions-runner-linux-x64-${RUNNER_VERSION}.tar.gz"
 
-        #sudo -u ${ACTUAL_USER} curl -sL "https://github.com/actions/runner/releases/download/v${RUNNER_VERSION}/${RUNNER_FILE}" -o "$RUNNER_FILE"
-        if ! sudo -u ${ACTUAL_USER} curl -L# \
+        # Download runner with wget progress bar (same style as ISO download)
+        if ! sudo -u ${ACTUAL_USER} wget -q --show-progress \
           "https://github.com/actions/runner/releases/download/v${RUNNER_VERSION}/${RUNNER_FILE}" \
-          -o "$RUNNER_FILE"; then
+          -O "$RUNNER_FILE"; then
             echo -e "   ${RED}✗${NC} Failed to download GitHub Actions runner"
             echo -e "   ${YELLOW}Check network / DNS / GitHub releases availability${NC}"
             exit 1
