@@ -1,5 +1,10 @@
 ---
-# Check target paths first
+## Single source of truth for env + hard asserts
+- name: Bootstrap env (resolve and validate all variables)
+  ansible.builtin.import_tasks: env_boot.yml
+  tags: [always]
+
+# THEN: Path safety (uses validated ansible_user)
 - name: Fail fast if paths resolve outside target user's home
   ansible.builtin.assert:
     that:
@@ -9,53 +14,6 @@
       One or more paths point outside /home/{{ ansible_user }}:
       ha_stack_dir={{ ha_stack_dir }}, ha_config_dir={{ ha_config_dir }}.
       Check inventories/group_vars/all.yml.
-
-- name: Validate all critical variables are defined
-  ansible.builtin.assert:
-    that:
-      # Core paths
-      - ha_stack_dir is defined
-      - ha_config_dir is defined
-      - ha_backups_dir is defined
-      - base_dir is defined
-      - base_home is defined
-      # Project config
-      - ha_project is defined
-      - ha_container_name is defined
-      - ha_version is defined
-      # Runtime config
-      - runtime_uid is defined
-      - runtime_gid is defined
-      - tz is defined
-      # Network config
-      - ha_host_port is defined
-      - ha_network_mode is defined
-      # Feature flags
-      - enable_cloudflared is defined
-      - enable_ssh_terminal is defined
-      - enable_code_server is defined
-      - enable_esphome is defined
-      - enable_samba is defined
-      - enable_target_passwordless_sudo is defined
-      - ha_bootstrap_enable is defined
-      # Credentials (checked in env_boot.yml but verify here too)
-      - github_username is defined
-      - github_pat is defined
-    fail_msg: |
-      ❌ CRITICAL VARIABLE(S) MISSING! ❌
-      
-      This usually means:
-      1. all.yml (group_vars) failed to load
-      2. Inventory configuration issue
-      3. Required environment variable not set
-      
-      Check:
-      - Is your inventory correct? (-i inventories/hosts)
-      - Is all.yml in the right location?
-      - Did you provide env_file? (-e env_file=../.env)
-      
-      Run with -vvv to see which variable is undefined.
-    success_msg: "✅ All critical variables validated"
 
 # --- New: discover the latest HA release tag (override > latest > stable) ---
 - name: Fetch latest Home Assistant Core release from GitHub
@@ -90,11 +48,6 @@
   ansible.builtin.setup:
     gather_subset: ['min']
 
-## Single source of truth for env + hard asserts
-- name: Bootstrap env (single source of truth)
-  ansible.builtin.import_tasks: env_boot.yml
-  tags: [always]
-
 # Optional: ensure the current user is in the docker group (needs re-login)
 - name: Ensure user is in 'docker' group (requires re-login to take effect)
   ansible.builtin.user:
@@ -121,8 +74,6 @@
     state: touch
     mode: "0644"
   changed_when: false
-  failed_when: result is failed
-  register: result
 
 # Check the homelab-config folder (HA)
 - name: Ensure ha_config_dir exists

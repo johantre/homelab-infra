@@ -1,4 +1,3 @@
-
 ## Resolve variables (single source of truth)
 ## 1) If env_file is given read .env (KEY=VALUE)
 - name: Resolve variables from .env (properties) when provided
@@ -21,19 +20,66 @@
   no_log: true
   ansible.builtin.assert:
     that:
-      - (github_username | default('')) | length > 0
-      - (github_pat       | default('')) | length > 0
-    fail_msg: "Missing GITHUB_USERNAME or GITHUB_PAT (via --extra-vars, env_file, of OS env)."
+      - github_username | length > 0
+      - github_pat | length > 0
+    fail_msg: "Missing GITHUB_USERNAME or GITHUB_PAT (via --extra-vars, env_file, or OS env)."
+
+- name: Validate all critical variables are defined
+  ansible.builtin.assert:
+    that:
+      # Core paths
+      - ha_stack_dir is defined
+      - ha_config_dir is defined
+      - ha_backups_dir is defined
+      - base_dir is defined
+      - base_home is defined
+      # Project config
+      - ha_project is defined
+      - ha_container_name is defined
+      - ha_version is defined
+      # Runtime config
+      - runtime_uid is defined
+      - runtime_gid is defined
+      - tz is defined
+      # Network config
+      - ha_host_port is defined
+      - ha_network_mode is defined
+      # Feature flags
+      - enable_cloudflared is defined
+      - enable_ssh_terminal is defined
+      - enable_code_server is defined
+      - enable_esphome is defined
+      - enable_samba is defined
+      - enable_target_passwordless_sudo is defined
+      - ha_bootstrap_enable is defined
+      # Credentials (checked above but verify here too)
+      - github_username is defined
+      - github_pat is defined
+    fail_msg: |
+      ❌ CRITICAL VARIABLE(S) MISSING! ❌
+      
+      This usually means:
+      1. all.yml (group_vars) failed to load
+      2. Inventory configuration issue
+      3. Required environment variable not set
+      
+      Check:
+      - Is your inventory correct? (-i inventories/hosts)
+      - Is all.yml in the right location?
+      - Did you provide env_file? (-e env_file=../.env)
+      
+      Run with -vvv to see which variable is undefined.
+    success_msg: "✅ All critical variables validated"
 
 - name: Assert CF_TUNNEL_TOKEN present when cloudflared is enabled
   no_log: true
   ansible.builtin.assert:
     that:
-      - (cf_tunnel_token | default('')) | length > 0
+      - cf_tunnel_token | length > 0
     fail_msg: "enable_cloudflared=true but CF_TUNNEL_TOKEN missing."
   when: enable_cloudflared | default(false)
 
-# One global env that can be uses everywhere
+# One global env that can be used everywhere
 - name: Build global Compose env (CF)
   ansible.builtin.set_fact:
     compose_global_env: "{{ {'CF_TUNNEL_TOKEN': cf_tunnel_token} }}"
