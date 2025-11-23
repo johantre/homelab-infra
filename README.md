@@ -142,4 +142,3 @@ This copies the default public key to ~/.ssh/id_ed25519.pub file to ~/.ssh/autho
       * deploys _keep_ working
       * updates _keep_ working
       * backups _keep_ working
-# IntelliJ push test"
