@@ -30,11 +30,6 @@ ha_restore_backup: ""
 ha_network_mode: bridge
 ha_host_port: 8124
 
-cf_dir: "{{ ha_stack_dir }}/cloudflared"
-cf_tunnel_id: "{{ lookup('env','CF_TUNNEL_ID') | default('', true) }}"
-cf_hostname:  "{{ lookup('env','CF_HOSTNAME')  | default('', true) }}"
-cf_creds_src: "{{ lookup('env','CF_CREDS_SRC') | default('', true) }}"
-
 # --- Other HA integrations, addon's
 # Feature flags
 enable_ssh_terminal: true

@@ -5,8 +5,6 @@
   ansible.builtin.set_fact:
     github_username: "{{ github_username | default(lookup('ini', 'GITHUB_USERNAME file=' + env_file + ' type=properties'), true) }}"
     github_pat:       "{{ github_pat       | default(lookup('ini', 'GITHUB_PAT file=' + env_file + ' type=properties'), true) }}"
-    cf_tunnel_id:     "{{ cf_tunnel_id     | default(lookup('ini', 'CF_TUNNEL_ID file=' + env_file + ' type=properties'), true) }}"
-    cf_hostname:      "{{ cf_hostname      | default(lookup('ini', 'CF_HOSTNAME file=' + env_file + ' type=properties'), true) }}"
     cf_tunnel_token:  "{{ cf_tunnel_token  | default(lookup('ini', 'CF_TUNNEL_TOKEN file=' + env_file + ' type=properties'), true) }}"
   when: env_file is defined
 
@@ -15,8 +13,6 @@
   ansible.builtin.set_fact:
     github_username: "{{ github_username | default(lookup('env','GITHUB_USERNAME'), true) }}"
     github_pat:       "{{ github_pat       | default(lookup('env','GITHUB_PAT'), true) }}"
-    cf_tunnel_id:     "{{ cf_tunnel_id     | default(lookup('env','CF_TUNNEL_ID'), true) }}"
-    cf_hostname:      "{{ cf_hostname      | default(lookup('env','CF_HOSTNAME'), true) }}"
     cf_tunnel_token:  "{{ cf_tunnel_token  | default(lookup('env','CF_TUNNEL_TOKEN'), true) }}"
   when: env_file is not defined
 
