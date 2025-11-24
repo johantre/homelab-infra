@@ -52,18 +52,32 @@ jobs:
           
           echo "✅ Target ${TARGET_IP} is reachable"
 
-      - name: Verify Ansible is installed
+      - name: Ensure Ansible is installed
         run: |
           echo "🔍 Checking Ansible installation..."
           
           if ! command -v ansible-playbook &> /dev/null; then
-            echo "❌ CRITICAL: ansible-playbook not found!"
-            echo "Install with: sudo apt install ansible"
-            exit 1
+            echo "📦 Ansible not found - installing..."
+          
+            # Update package list
+            sudo apt-get update -qq
+          
+            # Install Ansible
+            sudo apt-get install -y ansible
+          
+            if ! command -v ansible-playbook &> /dev/null; then
+              echo "❌ CRITICAL: Ansible installation failed!"
+              exit 1
+            fi
+          
+            echo "✅ Ansible installed successfully"
+          else
+            echo "✅ Ansible already installed"
           fi
           
+          # Show version
           ANSIBLE_VERSION=$(ansible-playbook --version | head -n1)
-          echo "✅ Ansible found: ${ANSIBLE_VERSION}"
+          echo "Ansible version: ${ANSIBLE_VERSION}"
 
       - name: Verify required files exist
         run: |
