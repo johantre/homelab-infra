@@ -10,7 +10,7 @@ on:
 
 jobs:
   deploy-homeassistant:
-    runs-on: [self-hosted, homeassistance]
+    runs-on: [self-hosted]
 
     steps:
       - name: Checkout repository
