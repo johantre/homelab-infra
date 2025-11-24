@@ -1,16 +1,11 @@
 name: Deploy Home Assistant
 
 on:
-  workflow_dispatch:
-    inputs:
-      target_ip:
-        description: 'Target IP address'
-        required: true
-        default: '192.168.3.33'
+  workflow_dispatch:  # Just a button!
 
 jobs:
   deploy-homeassistant:
-    runs-on: [self-hosted]
+    runs-on: [self-hosted, homeassistance]
 
     steps:
       - name: Checkout repository
@@ -22,7 +17,6 @@ jobs:
           
           MISSING_SECRETS=()
           
-          # Check each secret
           [[ -z "${{ secrets.GH_USERNAME }}" ]] && MISSING_SECRETS+=("GH_USERNAME")
           [[ -z "${{ secrets.GH_PAT }}" ]] && MISSING_SECRETS+=("GH_PAT")
           [[ -z "${{ secrets.CF_TUNNEL_TOKEN }}" ]] && MISSING_SECRETS+=("CF_TUNNEL_TOKEN")
@@ -32,25 +26,10 @@ jobs:
           
           if [[ ${#MISSING_SECRETS[@]} -gt 0 ]]; then
             echo "❌ CRITICAL: Missing secrets: ${MISSING_SECRETS[*]}"
-            echo "Add them at: GitHub → Settings → Secrets → Actions"
             exit 1
           fi
           
           echo "✅ All secrets present"
-
-      - name: Verify target IP is reachable
-        env:
-          TARGET_IP: ${{ github.event.inputs.target_ip }}
-        run: |
-          echo "🔍 Checking if target is reachable..."
-          
-          if ! ping -c 2 -W 5 "${TARGET_IP}" > /dev/null 2>&1; then
-            echo "❌ CRITICAL: Target ${TARGET_IP} is not reachable!"
-            echo "Check network connectivity or IP address"
-            exit 1
-          fi
-          
-          echo "✅ Target ${TARGET_IP} is reachable"
 
       - name: Ensure Ansible is installed
         run: |
@@ -58,26 +37,12 @@ jobs:
           
           if ! command -v ansible-playbook &> /dev/null; then
             echo "📦 Ansible not found - installing..."
-          
-            # Update package list
             sudo apt-get update -qq
-          
-            # Install Ansible
             sudo apt-get install -y ansible
-          
-            if ! command -v ansible-playbook &> /dev/null; then
-              echo "❌ CRITICAL: Ansible installation failed!"
-              exit 1
-            fi
-          
-            echo "✅ Ansible installed successfully"
-          else
-            echo "✅ Ansible already installed"
           fi
           
-          # Show version
           ANSIBLE_VERSION=$(ansible-playbook --version | head -n1)
-          echo "Ansible version: ${ANSIBLE_VERSION}"
+          echo "✅ Ansible: ${ANSIBLE_VERSION}"
 
       - name: Verify required files exist
         run: |
@@ -97,12 +62,9 @@ jobs:
           echo "✅ All required files present"
 
       - name: Stop existing Home Assistant stack
-        env:
-          TARGET_IP: ${{ github.event.inputs.target_ip }}
         run: |
           echo "🛑 Stopping existing Home Assistant stack..."
           
-          # Stop if running (don't fail if not running)
           if docker compose \
               -p ha-stack-ansible \
               -f "$HOME/homelab/target/ha-stack-ansible/docker-compose.yml" \
@@ -116,23 +78,16 @@ jobs:
         run: |
           echo "🧹 Cleaning up existing Home Assistant data..."
           
-          # Remove stack directory
           if [[ -d "$HOME/homelab/target/ha-stack-ansible" ]]; then
+            echo "Removing ha-stack-ansible (may contain root-owned files)..."
             sudo rm -rf "$HOME/homelab/target/ha-stack-ansible"
             echo "✅ Removed ha-stack-ansible directory"
           fi
           
-          # Remove config directory
           if [[ -d "$HOME/homelab/target/homeassistant-ansible" ]]; then
+            echo "Removing homeassistant-ansible..."
             sudo rm -rf "$HOME/homelab/target/homeassistant-ansible"
             echo "✅ Removed homeassistant-ansible directory"
-          fi
-          
-          # Verify cleanup
-          if [[ -d "$HOME/homelab/target/ha-stack-ansible" ]] || \
-             [[ -d "$HOME/homelab/target/homeassistant-ansible" ]]; then
-            echo "❌ CRITICAL: Cleanup failed - directories still exist!"
-            exit 1
           fi
           
           echo "✅ Cleanup complete - ready for fresh deployment"
@@ -145,24 +100,20 @@ jobs:
           HA_USER_USERNAME: ${{ secrets.HA_USER_USERNAME }}
           HA_USER_FULLNAME: ${{ secrets.HA_USER_FULLNAME }}
           HA_USER_PASSWORD: ${{ secrets.HA_USER_PASSWORD }}
-          TARGET_IP: ${{ github.event.inputs.target_ip }}
         run: |
           echo "🚀 Starting Home Assistant deployment..."
-          echo "Target: ${TARGET_IP}"
           
-          # Run Ansible with verbose output for debugging
-          set -e  # Exit immediately on any error
-          set -o pipefail  # Catch errors in pipes
+          set -e
+          set -o pipefail
           
+          # Simple - no IP needed! Runner IS the target.
           ansible-playbook \
             -i inventories/hosts \
             site.yml \
             -l ha_target \
-            -e "ansible_host=${TARGET_IP}" \
             -vv \
             2>&1 | tee ansible-deploy.log
           
-          # Check if playbook succeeded
           ANSIBLE_EXIT_CODE=${PIPESTATUS[0]}
           
           if [[ ${ANSIBLE_EXIT_CODE} -ne 0 ]]; then
@@ -178,8 +129,6 @@ jobs:
           echo "✅ Ansible deployment completed successfully!"
 
       - name: Verify deployment success
-        env:
-          TARGET_IP: ${{ github.event.inputs.target_ip }}
         run: |
           echo "🔍 Verifying deployment..."
           
@@ -219,15 +168,13 @@ jobs:
 
       - name: Deployment Summary
         if: always()
-        env:
-          TARGET_IP: ${{ github.event.inputs.target_ip }}
         run: |
           echo ""
           echo "======================================"
           echo "📊 DEPLOYMENT SUMMARY"
           echo "======================================"
-          echo "Target IP: ${TARGET_IP}"
-          echo "Access URL: http://${TARGET_IP}:8124"
+          echo "Deployed to: localhost (self-hosted runner)"
+          echo "Access URL: http://$(hostname -I | awk '{print $1}'):8124"
           echo ""
           echo "Running containers:"
           docker ps --filter "name=homeassistant\|cloudflared\|code_server\|esphome" \
