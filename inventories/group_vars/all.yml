@@ -21,8 +21,8 @@ ha_config_repo_subdir: "homeassistant"
 ha_config_repo_branch: "main"
 
 ha_user_username: "{{ lookup('env', 'HA_USER_USERNAME') }}"
-ha_user_fullname: "{{ lookup('env', 'HA_USER_FULLNAME') }}"
 ha_user_password: "{{ lookup('env', 'HA_USER_PASSWORD') }}"
+ha_bootstrap_enable: true
 ha_container_name: homeassistant_ansible
 ha_restore_safety_backup: true
 ha_restore_confirm: true

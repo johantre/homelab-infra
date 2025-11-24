@@ -1,32 +1,61 @@
 ---
+# Bootstrap authentication for Home Assistant 2025.11+
+# This playbook handles complete auth setup including cleanup of old data
+
+- name: Stop HA container for auth cleanup
+  community.docker.docker_container:
+    name: "{{ ha_container_name }}"
+    state: stopped
+  when: ha_bootstrap_enable | default(false)
+
+- name: Clean up old auth data from new location
+  ansible.builtin.file:
+    path: "{{ ha_config_dir }}/.storage/{{ item }}"
+    state: absent
+  loop:
+    - auth
+    - auth_provider.homeassistant
+    - onboarding
+  when: ha_bootstrap_enable | default(false)
+
+- name: Clean up old auth data from legacy location
+  ansible.builtin.file:
+    path: "{{ ha_config_dir }}/.homeassistant/.storage"
+    state: absent
+  when: ha_bootstrap_enable | default(false)
+
+- name: Start HA container after cleanup
+  community.docker.docker_container:
+    name: "{{ ha_container_name }}"
+    state: started
+  when: ha_bootstrap_enable | default(false)
+
 - name: Wait until HA API answers
   command: >
-    docker compose -p {{ ha_project }} -f {{ ha_stack_dir }}/docker-compose.yml exec -T {{ ha_container_name }}
+    docker exec {{ ha_container_name }}
     sh -lc 'curl -fsS http://127.0.0.1:8123/ || exit 1'
-  args:
-    chdir: "{{ ha_stack_dir }}"
   register: ha_ping
   retries: 30
   delay: 2
   until: ha_ping.rc == 0
   changed_when: false
+  when: ha_bootstrap_enable | default(false)
 
 - name: Read current HA users
   command: >
-    docker compose -p {{ ha_project }} -f {{ ha_stack_dir }}/docker-compose.yml exec -T {{ ha_container_name }}
+    docker exec {{ ha_container_name }}
     sh -c 'HOME=/config python -m homeassistant --script auth list'
-  args:
-    chdir: "{{ ha_stack_dir }}"
   register: ha_auth_list
   changed_when: false
+  when: ha_bootstrap_enable | default(false)
 
 - name: Create first admin user if user store is empty
   command: >
-    docker compose -p {{ ha_project }} -f {{ ha_stack_dir }}/docker-compose.yml exec -T {{ ha_container_name }}
+    docker exec {{ ha_container_name }}
     sh -c 'HOME=/config python -m homeassistant --script auth add {{ ha_user_username | quote }} {{ ha_user_password | quote }}'
-  args:
-    chdir: "{{ ha_stack_dir }}"
-  when: ha_auth_list.stdout is search('Total users:\s*0')
+  when: 
+    - ha_bootstrap_enable | default(false)
+    - ha_auth_list.stdout is search('Total users:\s*0')
   no_log: true
   run_once: true
 
@@ -34,6 +63,8 @@
   ansible.builtin.copy:
     dest: "{{ ha_config_dir }}/.storage/onboarding"
     mode: "0644"
+    owner: "{{ runtime_uid }}"
+    group: "{{ runtime_gid }}"
     content: |
       {
         "version": 4,
@@ -43,26 +74,27 @@
           "done": ["user", "core_config", "integration", "analytics"]
         }
       }
-  when: ha_auth_list.stdout is search('Total users:\s*0')
+  when: 
+    - ha_bootstrap_enable | default(false)
+    - ha_auth_list.stdout is search('Total users:\s*0')
 
 - name: Restart HA to apply onboarding completion
-  ansible.builtin.command:
-    cmd: >
-      docker compose -p {{ ha_project }} -f {{ ha_stack_dir }}/docker-compose.yml restart {{ ha_container_name }}
-  args:
-    chdir: "{{ ha_stack_dir }}"
-  when: ha_auth_list.stdout is search('Total users:\s*0')
+  command: >
+    docker restart {{ ha_container_name }}
+  when: 
+    - ha_bootstrap_enable | default(false)
+    - ha_auth_list.stdout is search('Total users:\s*0')
   changed_when: true
 
 - name: Wait for HA to come back up after restart
   command: >
-    docker compose -p {{ ha_project }} -f {{ ha_stack_dir }}/docker-compose.yml exec -T {{ ha_container_name }}
+    docker exec {{ ha_container_name }}
     sh -lc 'curl -fsS http://127.0.0.1:8123/ || exit 1'
-  args:
-    chdir: "{{ ha_stack_dir }}"
   register: ha_ping_after_restart
   retries: 30
   delay: 2
   until: ha_ping_after_restart.rc == 0
   changed_when: false
-  when: ha_auth_list.stdout is search('Total users:\s*0')
+  when: 
+    - ha_bootstrap_enable | default(false)
+    - ha_auth_list.stdout is search('Total users:\s*0')
