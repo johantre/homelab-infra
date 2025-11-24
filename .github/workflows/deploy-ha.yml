@@ -118,13 +118,13 @@ jobs:
           
           # Remove stack directory
           if [[ -d "$HOME/homelab/target/ha-stack-ansible" ]]; then
-            rm -rf "$HOME/homelab/target/ha-stack-ansible"
+            sudo rm -rf "$HOME/homelab/target/ha-stack-ansible"
             echo "✅ Removed ha-stack-ansible directory"
           fi
           
           # Remove config directory
           if [[ -d "$HOME/homelab/target/homeassistant-ansible" ]]; then
-            rm -rf "$HOME/homelab/target/homeassistant-ansible"
+            sudo rm -rf "$HOME/homelab/target/homeassistant-ansible"
             echo "✅ Removed homeassistant-ansible directory"
           fi
           
