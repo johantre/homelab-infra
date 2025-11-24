@@ -1,6 +1,6 @@
 ---
 # Bootstrap authentication for Home Assistant 2025.11+
-# This playbook handles complete auth setup including cleanup of old data
+# Uses Python script to properly create users with credentials
 
 - name: Stop HA container for auth cleanup
   community.docker.docker_container:
@@ -49,39 +49,38 @@
   changed_when: false
   when: ha_bootstrap_enable | default(false)
 
-- name: Create first admin user if user store is empty
+- name: Copy user creation script to container
+  command: >
+    docker cp {{ role_path }}/files/create_ha_user.py {{ ha_container_name }}:/tmp/create_ha_user.py
+  when:
+    - ha_bootstrap_enable | default(false)
+    - ha_auth_list.stdout is search('Total users:\s*0')
+  changed_when: true
+
+- name: Create first admin user with Python script
   command: >
     docker exec {{ ha_container_name }}
-    sh -c 'HOME=/config python -m homeassistant --script auth add {{ ha_user_username | quote }} {{ ha_user_password | quote }}'
-  when: 
+    python3 /tmp/create_ha_user.py {{ ha_user_username | quote }} {{ ha_user_password | quote }}
+  when:
     - ha_bootstrap_enable | default(false)
     - ha_auth_list.stdout is search('Total users:\s*0')
   no_log: true
   run_once: true
+  register: user_creation
+  changed_when: user_creation.rc == 0
 
-- name: Mark onboarding as complete
-  ansible.builtin.copy:
-    dest: "{{ ha_config_dir }}/.storage/onboarding"
-    mode: "0644"
-    owner: "{{ runtime_uid }}"
-    group: "{{ runtime_gid }}"
-    content: |
-      {
-        "version": 4,
-        "minor_version": 1,
-        "key": "onboarding",
-        "data": {
-          "done": ["user", "core_config", "integration", "analytics"]
-        }
-      }
-  when: 
+- name: Show user creation result
+  debug:
+    msg: "{{ user_creation.stdout_lines }}"
+  when:
     - ha_bootstrap_enable | default(false)
     - ha_auth_list.stdout is search('Total users:\s*0')
+    - user_creation.stdout_lines is defined
 
-- name: Restart HA to apply onboarding completion
+- name: Restart HA to apply all changes
   command: >
     docker restart {{ ha_container_name }}
-  when: 
+  when:
     - ha_bootstrap_enable | default(false)
     - ha_auth_list.stdout is search('Total users:\s*0')
   changed_when: true
@@ -95,6 +94,16 @@
   delay: 2
   until: ha_ping_after_restart.rc == 0
   changed_when: false
-  when: 
+  when:
     - ha_bootstrap_enable | default(false)
     - ha_auth_list.stdout is search('Total users:\s*0')
+
+- name: Clean up temporary script
+  command: >
+    docker exec {{ ha_container_name }}
+    rm -f /tmp/create_ha_user.py
+  when:
+    - ha_bootstrap_enable | default(false)
+    - ha_auth_list.stdout is search('Total users:\s*0')
+  changed_when: false
+  failed_when: false
