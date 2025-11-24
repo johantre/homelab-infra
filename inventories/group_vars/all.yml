@@ -58,5 +58,4 @@ service_data_dirs:
 
 tz: "Europe/Brussels"
 enable_target_passwordless_sudo: true
-ha_bootstrap_enable: true
 manage_docker_group: false
