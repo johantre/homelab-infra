@@ -8,6 +8,7 @@ and marks onboarding as complete.
 import json
 import sys
 import secrets
+import base64
 from pathlib import Path
 
 # Paths
@@ -20,9 +21,12 @@ def generate_user_id():
     return secrets.token_hex(16)
 
 def hash_password(password):
-    """Create bcrypt-style password hash."""
+    """Create bcrypt-style password hash and base64 encode it."""
     import bcrypt
-    return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+    # Create bcrypt hash
+    bcrypt_hash = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+    # Base64 encode for HA storage
+    return base64.b64encode(bcrypt_hash.encode('utf-8')).decode('utf-8')
 
 def create_user(username, password):
     """Create a complete user with credentials and mark onboarding complete."""
