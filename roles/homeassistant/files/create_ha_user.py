@@ -6,10 +6,8 @@ This script directly manipulates the auth database to create a complete user ent
 
 import json
 import sys
-import hashlib
 import secrets
 from pathlib import Path
-from datetime import datetime, timezone
 
 # Paths
 AUTH_FILE = Path("/config/.storage/auth")
@@ -49,11 +47,11 @@ def create_user(username, password):
     # Create user entry
     new_user = {
         "id": user_id,
-        "group_ids": ["system-admin"],  # Admin group!
-        "is_owner": True,  # Make them owner
+        "group_ids": ["system-admin"],
+        "is_owner": True,
         "is_active": True,
         "name": username,
-        "system_generated": False,  # NOT system generated!
+        "system_generated": False,
         "local_only": False
     }
     
@@ -79,6 +77,16 @@ def create_user(username, password):
     if "credentials" not in auth_data["data"]:
         auth_data["data"]["credentials"] = []
     auth_data["data"]["credentials"].append(new_credential)
+    
+    # Clean up orphaned refresh tokens
+    valid_user_ids = [u["id"] for u in auth_data["data"]["users"]]
+    original_tokens = len(auth_data["data"].get("refresh_tokens", []))
+    auth_data["data"]["refresh_tokens"] = [
+        t for t in auth_data["data"].get("refresh_tokens", [])
+        if t.get("user_id") in valid_user_ids
+    ]
+    removed_tokens = original_tokens - len(auth_data["data"]["refresh_tokens"])
+    print(f"Cleaned up {removed_tokens} orphaned refresh tokens")
     
     # Write updated auth file
     with open(AUTH_FILE, 'w') as f:
