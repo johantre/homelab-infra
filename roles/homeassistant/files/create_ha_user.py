@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
 Create Home Assistant user with proper credentials for HA 2025.11+
-This script directly manipulates the auth database to create a complete user entry.
+This script directly manipulates the auth database to create a complete user entry
+and marks onboarding as complete.
 """
 
 import json
@@ -12,6 +13,7 @@ from pathlib import Path
 # Paths
 AUTH_FILE = Path("/config/.storage/auth")
 AUTH_PROVIDER_FILE = Path("/config/.storage/auth_provider.homeassistant")
+ONBOARDING_FILE = Path("/config/.storage/onboarding")
 
 def generate_user_id():
     """Generate a UUID-like user ID."""
@@ -23,7 +25,7 @@ def hash_password(password):
     return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
 
 def create_user(username, password):
-    """Create a complete user with credentials."""
+    """Create a complete user with credentials and mark onboarding complete."""
     
     # Read existing auth file
     if not AUTH_FILE.exists():
@@ -86,7 +88,8 @@ def create_user(username, password):
         if t.get("user_id") in valid_user_ids
     ]
     removed_tokens = original_tokens - len(auth_data["data"]["refresh_tokens"])
-    print(f"Cleaned up {removed_tokens} orphaned refresh tokens")
+    if removed_tokens > 0:
+        print(f"Cleaned up {removed_tokens} orphaned refresh tokens")
     
     # Write updated auth file
     with open(AUTH_FILE, 'w') as f:
@@ -110,10 +113,24 @@ def create_user(username, password):
     with open(AUTH_PROVIDER_FILE, 'w') as f:
         json.dump(auth_provider_data, f, indent=2)
     
+    # Mark onboarding as complete
+    onboarding_data = {
+        "version": 4,
+        "minor_version": 1,
+        "key": "onboarding",
+        "data": {
+            "done": ["user", "core_config", "integration", "analytics"]
+        }
+    }
+    
+    with open(ONBOARDING_FILE, 'w') as f:
+        json.dump(onboarding_data, f, indent=2)
+    
     print(f"✅ User '{username}' created successfully!")
     print(f"   User ID: {user_id}")
     print(f"   Group: system-admin (Administrator)")
     print(f"   Owner: Yes")
+    print(f"✅ Onboarding marked as complete")
     return True
 
 if __name__ == "__main__":
