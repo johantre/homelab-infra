@@ -14,7 +14,7 @@
 - name: Read current HA users
   command: >
     docker compose -p {{ ha_project }} -f {{ ha_stack_dir }}/docker-compose.yml exec -T {{ ha_container_name }}
-    sh -lc 'python -m homeassistant --script auth -c /config list'
+    sh -c 'HOME=/config python -m homeassistant --script auth list'
   args:
     chdir: "{{ ha_stack_dir }}"
   register: ha_auth_list
@@ -23,8 +23,7 @@
 - name: Create first admin user if user store is empty
   command: >
     docker compose -p {{ ha_project }} -f {{ ha_stack_dir }}/docker-compose.yml exec -T {{ ha_container_name }}
-    sh -lc 'python -m homeassistant --script auth -c /config
-            add {{ ha_user_username | quote }} {{ ha_user_fullname | quote }} --password {{ ha_user_password | quote }} --group system-admin'
+    sh -c 'HOME=/config python -m homeassistant --script auth add {{ ha_user_username | quote }} {{ ha_user_password | quote }}'
   args:
     chdir: "{{ ha_stack_dir }}"
   when: ha_auth_list.stdout is search('Total users:\s*0')
