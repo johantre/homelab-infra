@@ -29,3 +29,40 @@
   when: ha_auth_list.stdout is search('Total users:\s*0')
   no_log: true
   run_once: true
+
+- name: Mark onboarding as complete
+  ansible.builtin.copy:
+    dest: "{{ ha_config_dir }}/.storage/onboarding"
+    mode: "0644"
+    content: |
+      {
+        "version": 4,
+        "minor_version": 1,
+        "key": "onboarding",
+        "data": {
+          "done": ["user", "core_config", "integration", "analytics"]
+        }
+      }
+  when: ha_auth_list.stdout is search('Total users:\s*0')
+
+- name: Restart HA to apply onboarding completion
+  ansible.builtin.command:
+    cmd: >
+      docker compose -p {{ ha_project }} -f {{ ha_stack_dir }}/docker-compose.yml restart {{ ha_container_name }}
+  args:
+    chdir: "{{ ha_stack_dir }}"
+  when: ha_auth_list.stdout is search('Total users:\s*0')
+  changed_when: true
+
+- name: Wait for HA to come back up after restart
+  command: >
+    docker compose -p {{ ha_project }} -f {{ ha_stack_dir }}/docker-compose.yml exec -T {{ ha_container_name }}
+    sh -lc 'curl -fsS http://127.0.0.1:8123/ || exit 1'
+  args:
+    chdir: "{{ ha_stack_dir }}"
+  register: ha_ping_after_restart
+  retries: 30
+  delay: 2
+  until: ha_ping_after_restart.rc == 0
+  changed_when: false
+  when: ha_auth_list.stdout is search('Total users:\s*0')
