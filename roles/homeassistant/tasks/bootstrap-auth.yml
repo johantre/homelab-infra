@@ -49,6 +49,15 @@
   changed_when: false
   when: ha_bootstrap_enable | default(false)
 
+- name: Copy user creation script to target
+  ansible.builtin.copy:
+    src: create_ha_user.py
+    dest: /tmp/create_ha_user.py
+    mode: "0644"
+  when:
+    - ha_bootstrap_enable | default(false)
+    - ha_auth_list.stdout is search('Total users:\s*0')
+
 - name: Copy user creation script to container
   ansible.builtin.shell: >
     docker cp /tmp/create_ha_user.py {{ ha_container_name }}:/tmp/create_ha_user.py
