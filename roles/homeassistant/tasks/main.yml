@@ -139,7 +139,7 @@
       - "--no-group"
       - "--no-perms"
       - "--omit-dir-times"
-      - "--exclude=*.db*"
+      - "--exclude=**.db*"
       - "--exclude=*.log*"
       - "--exclude=.storage/"
       - "--exclude=deps/"
