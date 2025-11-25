@@ -139,7 +139,9 @@
       - "--no-group"
       - "--no-perms"
       - "--omit-dir-times"
-      - "--exclude=.storage/backups/"
+      - "--exclude=*.db*"
+      - "--exclude=*.log*"
+      - "--exclude=.storage/"
       - "--exclude=deps/"
   when: "'ha_target' in group_names"
 

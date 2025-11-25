@@ -2,4 +2,4 @@
 localhost ansible_connection=local ansible_python_interpreter=/usr/bin/python3
 
 [ha_target]
-live-laptop ansible_connection=local ansible_user=ubuntu ansible_python_interpreter=/usr/bin/python3
+live-laptop ansible_host=192.168.3.33 ansible_user=ubuntu ansible_python_interpreter=/usr/bin/python3

@@ -50,8 +50,8 @@
   when: ha_bootstrap_enable | default(false)
 
 - name: Copy user creation script to container
-  command: >
-    docker cp {{ role_path }}/files/create_ha_user.py {{ ha_container_name }}:/tmp/create_ha_user.py
+  ansible.builtin.shell: >
+    docker cp /tmp/create_ha_user.py {{ ha_container_name }}:/tmp/create_ha_user.py
   when:
     - ha_bootstrap_enable | default(false)
     - ha_auth_list.stdout is search('Total users:\s*0')
