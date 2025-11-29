@@ -36,22 +36,20 @@ Location: $HOME/homelab/infra repo folder (where this current repo lives)
 ### Start Ansible deploy 
 towards:
 #### ha (local machine)
-    ansible-playbook -i inventories/hosts site.yml -l ha -e env_file=../.env
+    ansible-playbook -i inventories/ha_target_local.ini site.yml -l ha -e env_file=../.env
 #### ha_target
-    ansible-playbook -i inventories/hosts site.yml -l ha_target -e "ansible_connection=ssh" -e "ansible_host=<target-ip>" -e env_file=../.env
+    ansible-playbook -i inventories/ha_target_remote.ini site.yml -l ha_target -e env_file=../.env
 ### DOWN/UP target 
-    ansible -i inventories/hosts ha_target \
+    ansible -i inventories/ha_target_remote.ini ha_target \
     -m ansible.builtin.shell \
-    -e "ansible_connection=ssh" -e "ansible_host=<target-ip>" \
     -a 'docker compose -p ha-stack-ansible -f "$HOME/homelab/target/ha-stack-ansible/docker-compose.yml" down'
 
-    ansible -i inventories/hosts ha_target \
+    ansible -i inventories/ha_target_remote.ini ha_target \
     -m ansible.builtin.shell \
-    -e "ansible_connection=ssh" -e "ansible_host=<target-ip>" \
     -a 'docker compose -p ha-stack-ansible -f "$HOME/homelab/target/ha-stack-ansible/docker-compose.yml" up -d'
 ### Cleanup target
 
-    ansible -i inventories/hosts ha_target -b -m shell -e "ansible_connection=ssh" -e "ansible_host=<target-ip>"  -a "rm -rf /home/ubuntu/homelab/target/*"
+    ansible -i inventories/ha_target_remote.ini ha_target -b -m shell -a "rm -rf /home/ubuntu/homelab/target/*"
 
 ### Copy ssh key to target default location
 This copies the default public key to ~/.ssh/id_ed25519.pub file to ~/.ssh/authorized_keys file immediately with the right permissions.
@@ -59,69 +57,65 @@ This copies the default public key to ~/.ssh/id_ed25519.pub file to ~/.ssh/autho
     ssh-copy-id ubuntu@<TARGET_IP>
 
 ### Backup
-**making backups**
+**making backups on target**
 
-    ansible-playbook -i inventories/hosts site.yml -l ha_target -e "ansible_connection=ssh" -e "ansible_host=<target-ip>" --tags backup -vv
+    ansible-playbook -i inventories/ha_target_remote.ini site.yml -l ha_target --tags backup -vv
 
-**checking backups**
+**checking backups on target**
 
-    ansible -i inventories/hosts ha_target -e "ansible_connection=ssh" -e "ansible_host=<target-ip>" -m shell \
+    ansible -i inventories/ha_target_remote.ini ha_target -m shell \
       -a 'ls -lt "$HOME/homelab/target/ha-stack-ansible/backup" | head -n 3'
 
-**restore backup**\
+**restore backup on target**\
 (ha-config-20251105T165427.tar.gz as example)
 
     # W/o restore playbook
-    ansible -i inventories/hosts ha_target \ 
-    -e "ansible_connection=ssh" -e "ansible_host=<target-ip>" \
+    ansible -i inventories/ha_target_remote.ini ha_target \ 
     -m shell -a \
     'tar -xzf /home/ubuntu/homelab/target/ha-stack-ansible/backup/ha-config-20251105T165427.tar.gz \
     -C /home/ubuntu/homelab/target/homeassistant-ansible \
     --strip-components=1'
 
     # With restore playbook + specific backup restore
-    ansible-playbook -i inventories/hosts site.yml -l ha_target \
-    -e "ansible_connection=ssh" -e "ansible_host=<target-ip>"
+    ansible-playbook -i inventories/ha_target_remote.ini site.yml -l ha_target \
     -e env_file=../.env \
     --tags restore \
     -e ha_restore_backup=ha-config-20251105T165427.tar.gz
     
     # With restore playbook + last backup restore
-    ansible-playbook -i inventories/hosts site.yml -l ha_target \
-    -e "ansible_connection=ssh" -e "ansible_host=<target-ip>"
+    ansible-playbook -i inventories/ha_target_remote.ini site.yml -l ha_target \
     -e env_file=../.env \
     --tags restore
 
     # Skip confirmation prompt (for automation later)
-    ansible-playbook -i inventories/hosts site.yml -l ha_target \
-    -e "ansible_connection=ssh" -e "ansible_host=<target-ip>"
+    ansible-playbook -i inventories/ha_target_remote.ini site.yml -l ha_target \
     -e env_file=../.env \
     --tags restore \
     -e ha_restore_confirm=false
 
 ### HA Update
-**first run for bootstrapping**
+**first run for bootstrapping on target**
 
-    ansible-playbook -i inventories/hosts site.yml -l ha_target -e "ansible_connection=ssh" -e "ansible_host=<target-ip>" -e env_file=../.env
+    ansible-playbook -i inventories/ha_target_remote.ini site.yml -l ha_target -e env_file=../.env
 
-**upgrade latest version**
+**upgrade latest version on target**
 
-    ansible-playbook -i inventories/hosts site.yml -l ha_target -e "ansible_connection=ssh" -e "ansible_host=<target-ip>" --tags ha_update
+    ansible-playbook -i inventories/ha_target_remote.ini site.yml -l ha_target --tags ha_update
 
-**upgrade specific version**
+**upgrade specific version on target**
 
-    ansible-playbook -i inventories/hosts site.yml -l ha_target --tags ha_update -e "ansible_connection=ssh" -e "ansible_host=<target-ip>" -e ha_version_override=2025.10.5
+    ansible-playbook -i inventories/ha_target_remote.ini site.yml -l ha_target --tags ha_update -e ha_version_override=2025.10.5
 
-**roll back: put lock back**
+**roll back: put lock back on target**
 
-    ansible -i inventories/hosts ha_target -e "ansible_connection=ssh" -e "ansible_host=<target-ip>" -m copy \
+    ansible -i inventories/ha_target_remote.ini ha_target -m copy \
       -a 'dest="{{ ha_stack_dir }}/.ha_version.lock" mode=0644 content="2025.10.3\n"'
-    ansible-playbook -i inventories/hosts site.yml -l ha_target --tags ha_update
+    ansible-playbook -i inventories/ha_target_remote.ini site.yml -l ha_target --tags ha_update
 
 ### Debugging
-**list what ansible _thinks_ going to execute, eg:**
+**list on target what ansible _thinks_ going to execute, eg:**
 
-    ansible-playbook -i inventories/hosts site.yml -l ha_target -e "ansible_connection=ssh" -e "ansible_host=<target-ip>" -e env_file=../.env \
+    ansible-playbook -i inventories/ha_target_remote.ini site.yml -l ha_target -e env_file=../.env \
     --tags backups --list-tags --list-tasks
 
 ## On target node 
@@ -142,4 +136,4 @@ This copies the default public key to ~/.ssh/id_ed25519.pub file to ~/.ssh/autho
       * deploys _keep_ working
       * updates _keep_ working
       * backups _keep_ working
-# Test deployment Mon Nov 24 19:44:12 CET 2025
+

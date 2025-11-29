@@ -180,7 +180,7 @@ jobs:
           
           # Run Ansible from infra directory
           ansible-playbook \
-            -i inventories/hosts \
+            -i inventories/ha_target_local.ini \
             site.yml \
             -l ha_target \
             -vv \
