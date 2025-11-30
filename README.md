@@ -122,6 +122,23 @@ This copies the default public key to ~/.ssh/id_ed25519.pub file to ~/.ssh/autho
 ### Stopping target
     docker compose -p ha-stack-ansible -f "$HOME/homelab/target/ha-stack-ansible/docker-compose.yml" down
 
+
+# Restore .storage on target
+
+    ssh ubuntu@192.168.3.33 "docker stop homeassistant_ansible"
+    
+    ls ~/ha-prod/.storage/ || sshfs root@192.168.3.8:/homeassistant ~/ha-prod -p 22
+    
+    rsync -av \
+    --exclude='backups/' \
+    ~/ha-prod/.storage/ \
+    ubuntu@192.168.3.33:~/homelab/target/homeassistant-ansible/config/.storage/
+    
+    ssh ubuntu@192.168.3.33 \
+    "sudo chown -R ubuntu:ubuntu ~/homelab/target/homeassistant-ansible/config/.storage/"
+    
+    ssh ubuntu@192.168.3.33 "docker start homeassistant_ansible"
+
 # TODO's:
 * Attention for need for sudo pass **first time** to set nopassword!
 * Move to GitHub actions as controller but with self-hosted runners on the target node
