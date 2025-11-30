@@ -64,7 +64,7 @@
       3. Required environment variable not set
       
       Check:
-      - Is your inventory correct? (-i inventories/hosts)
+      - Is your inventory correct? (-i inventories/ha_target_local.ini or ha_target_remote.ini)
       - Is all.yml in the right location?
       - Did you provide env_file? (-e env_file=../.env)
       

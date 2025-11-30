@@ -89,7 +89,6 @@ jobs:
           [[ -z "${{ secrets.GH_PAT }}" ]] && MISSING_SECRETS+=("GH_PAT")
           [[ -z "${{ secrets.CF_TUNNEL_TOKEN }}" ]] && MISSING_SECRETS+=("CF_TUNNEL_TOKEN")
           [[ -z "${{ secrets.HA_USER_USERNAME }}" ]] && MISSING_SECRETS+=("HA_USER_USERNAME")
-          [[ -z "${{ secrets.HA_USER_FULLNAME }}" ]] && MISSING_SECRETS+=("HA_USER_FULLNAME")
           [[ -z "${{ secrets.HA_USER_PASSWORD }}" ]] && MISSING_SECRETS+=("HA_USER_PASSWORD")
           
           if [[ ${#MISSING_SECRETS[@]} -gt 0 ]]; then
@@ -120,9 +119,10 @@ jobs:
           
           MISSING_FILES=()
           
-          [[ ! -f "inventories/hosts" ]] && MISSING_FILES+=("inventories/hosts")
           [[ ! -f "site.yml" ]] && MISSING_FILES+=("site.yml")
           [[ ! -f "inventories/group_vars/all.yml" ]] && MISSING_FILES+=("all.yml")
+          [[ ! -f "inventories/ha_target_local.ini" ]] && MISSING_FILES+=("ha_target_local.ini")
+          [[ ! -f "inventories/ha_target_remote.ini" ]] && MISSING_FILES+=("ha_target_remote.ini")
           
           if [[ ${#MISSING_FILES[@]} -gt 0 ]]; then
             echo "❌ CRITICAL: Missing files: ${MISSING_FILES[*]}"
@@ -168,7 +168,6 @@ jobs:
           GITHUB_PAT: ${{ secrets.GH_PAT }}
           CF_TUNNEL_TOKEN: ${{ secrets.CF_TUNNEL_TOKEN }}
           HA_USER_USERNAME: ${{ secrets.HA_USER_USERNAME }}
-          HA_USER_FULLNAME: ${{ secrets.HA_USER_FULLNAME }}
           HA_USER_PASSWORD: ${{ secrets.HA_USER_PASSWORD }}
         run: |
           echo "🚀 Starting Home Assistant deployment..."
