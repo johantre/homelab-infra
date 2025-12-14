@@ -101,10 +101,11 @@
 
 # Optional OS updates (runs only when --tags os_update is used)
 - name: Include OS updates (opt-in via tags)
-  include_tasks: os-update.yml
-  apply:
-    tags:
-      - os_update
+  include_tasks:
+    file: os-update.yml
+    apply:
+      tags:
+        - os_update
   tags: [os_update, never]
 
 # Prepare target packages (Docker/Compose + rsync) before we sync the repo
