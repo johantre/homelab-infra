@@ -135,10 +135,7 @@ jobs:
         run: |
           echo "🛑 Stopping existing Home Assistant stack..."
           
-          if docker compose \
-              -p ha-stack-ansible \
-              -f "$HOME/homelab/target/ha-stack-ansible/docker-compose.yml" \
-              down 2>/dev/null; then
+          if sg docker -c 'docker compose -p ha-stack-ansible -f "$HOME/homelab/target/ha-stack-ansible/docker-compose.yml" down' 2>/dev/null; then
             echo "✅ Stack stopped successfully"
           else
             echo "ℹ️  No existing stack found (this is OK)"
@@ -204,14 +201,14 @@ jobs:
           echo "🔍 Verifying deployment..."
           
           # Check if homeassistant container is running
-          if ! docker ps --filter "name=homeassistant_ansible" --format "{{.Names}}" | grep -q "homeassistant_ansible"; then
+          if ! sg docker -c 'docker ps --filter "name=homeassistant_ansible" --format "{{.Names}}"' | grep -q "homeassistant_ansible"; then
             echo "❌ CRITICAL: Home Assistant container is NOT running!"
             echo ""
             echo "Docker containers:"
-            docker ps -a --filter "name=homeassistant" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+            sg docker -c 'docker ps -a --filter "name=homeassistant" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"'
             echo ""
             echo "Docker logs (last 30 lines):"
-            docker logs homeassistant_ansible --tail 30 2>&1 || echo "Could not fetch logs"
+            sg docker -c 'docker logs homeassistant_ansible --tail 30' 2>&1 || echo "Could not fetch logs"
             exit 1
           fi
           
@@ -229,7 +226,7 @@ jobs:
               echo "❌ CRITICAL: Home Assistant not responding after 60 seconds!"
               echo ""
               echo "Container logs:"
-              docker logs homeassistant_ansible --tail 50
+              sg docker -c 'docker logs homeassistant_ansible --tail 50'
               exit 1
             fi
           
@@ -248,8 +245,7 @@ jobs:
           echo "Access URL: http://$(hostname -I | awk '{print $1}'):8124"
           echo ""
           echo "Running containers:"
-          docker ps --filter "name=homeassistant\|cloudflared\|code_server\|esphome" \
-            --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" || echo "Could not list containers"
+          sg docker -c 'docker ps --filter "name=homeassistant\|cloudflared\|code_server\|esphome" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"' || echo "Could not list containers"
           echo ""
           
           if [[ "${{ job.status }}" == "success" ]]; then
