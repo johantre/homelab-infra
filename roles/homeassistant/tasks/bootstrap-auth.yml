@@ -3,10 +3,12 @@
 # Uses Python script to properly create users with credentials
 
 - name: Stop HA container for auth cleanup
-  community.docker.docker_container:
-    name: "{{ ha_container_name }}"
-    state: stopped
+  ansible.builtin.shell: |
+    sg docker -c 'docker stop {{ ha_container_name }}'
   when: ha_bootstrap_enable | default(false)
+  register: ha_stop
+  failed_when: false
+  changed_when: ha_stop.rc == 0
 
 - name: Clean up old auth data from new location
   ansible.builtin.file:
@@ -25,15 +27,16 @@
   when: ha_bootstrap_enable | default(false)
 
 - name: Start HA container after cleanup
-  community.docker.docker_container:
-    name: "{{ ha_container_name }}"
-    state: started
+  ansible.builtin.shell: |
+    sg docker -c 'docker start {{ ha_container_name }}'
   when: ha_bootstrap_enable | default(false)
+  register: ha_start
+  changed_when: ha_start.rc == 0
+
 
 - name: Wait until HA API answers
-  command: >
-    docker exec {{ ha_container_name }}
-    sh -lc 'curl -fsS http://127.0.0.1:8123/ || exit 1'
+  ansible.builtin.shell: |
+    sg docker -c 'docker exec {{ ha_container_name }} sh -lc "curl -fsS http://127.0.0.1:8123/ || exit 1"'
   register: ha_ping
   retries: 30
   delay: 2
@@ -42,9 +45,8 @@
   when: ha_bootstrap_enable | default(false)
 
 - name: Read current HA users
-  command: >
-    docker exec {{ ha_container_name }}
-    sh -c 'HOME=/config python -m homeassistant --script auth list'
+  ansible.builtin.shell: |
+    sg docker -c 'docker exec {{ ha_container_name }} sh -c "HOME=/config python -m homeassistant --script auth list"'
   register: ha_auth_list
   changed_when: false
   when: ha_bootstrap_enable | default(false)
@@ -59,17 +61,16 @@
     - ha_auth_list.stdout is search('Total users:\s*0')
 
 - name: Copy user creation script to container
-  ansible.builtin.shell: >
-    docker cp /tmp/create_ha_user.py {{ ha_container_name }}:/tmp/create_ha_user.py
+  ansible.builtin.shell: |
+    sg docker -c 'docker cp /tmp/create_ha_user.py {{ ha_container_name }}:/tmp/create_ha_user.py'
   when:
     - ha_bootstrap_enable | default(false)
     - ha_auth_list.stdout is search('Total users:\s*0')
   changed_when: true
 
 - name: Create first admin user with Python script
-  command: >
-    docker exec {{ ha_container_name }}
-    python3 /tmp/create_ha_user.py {{ ha_user_username | quote }} {{ ha_user_password | quote }}
+  ansible.builtin.shell: |
+    sg docker -c 'docker exec {{ ha_container_name }} python3 /tmp/create_ha_user.py {{ ha_user_username | quote }} {{ ha_user_password | quote }}'
   when:
     - ha_bootstrap_enable | default(false)
     - ha_auth_list.stdout is search('Total users:\s*0')
@@ -87,17 +88,16 @@
     - user_creation.stdout_lines is defined
 
 - name: Restart HA to apply all changes
-  command: >
-    docker restart {{ ha_container_name }}
+  ansible.builtin.shell: |
+    sg docker -c 'docker restart {{ ha_container_name }}'
   when:
     - ha_bootstrap_enable | default(false)
     - ha_auth_list.stdout is search('Total users:\s*0')
   changed_when: true
 
 - name: Wait for HA to come back up after restart
-  command: >
-    docker exec {{ ha_container_name }}
-    sh -lc 'curl -fsS http://127.0.0.1:8123/ || exit 1'
+  ansible.builtin.shell: |
+    sg docker -c 'docker exec {{ ha_container_name }} sh -lc "curl -fsS http://127.0.0.1:8123/ || exit 1"'
   register: ha_ping_after_restart
   retries: 30
   delay: 2
@@ -108,9 +108,8 @@
     - ha_auth_list.stdout is search('Total users:\s*0')
 
 - name: Clean up temporary script
-  command: >
-    docker exec {{ ha_container_name }}
-    rm -f /tmp/create_ha_user.py
+  ansible.builtin.shell: |
+    sg docker -c 'docker exec {{ ha_container_name }} rm -f /tmp/create_ha_user.py'
   when:
     - ha_bootstrap_enable | default(false)
     - ha_auth_list.stdout is search('Total users:\s*0')

@@ -73,12 +73,8 @@
   tags: [restore]
 
 - name: Stop HA stack before restore
-  ansible.builtin.command:
-    cmd: >
-      docker compose
-      -p {{ ha_project | quote }}
-      -f {{ ha_stack_dir }}/docker-compose.yml
-      down
+  ansible.builtin.shell: |
+    sg docker -c 'docker compose -p {{ ha_project | quote }} -f {{ ha_stack_dir }}/docker-compose.yml down'
   args:
     chdir: "{{ ha_stack_dir }}"
   environment: "{{ compose_global_env }}"
@@ -128,12 +124,8 @@
   tags: [restore]
 
 - name: Start HA stack after restore
-  ansible.builtin.command:
-    cmd: >
-      docker compose
-      -p {{ ha_project | quote }}
-      -f {{ ha_stack_dir }}/docker-compose.yml
-      up -d
+  ansible.builtin.shell: |
+    sg docker -c 'docker compose -p {{ ha_project | quote }} -f {{ ha_stack_dir }}/docker-compose.yml up -d'
   args:
     chdir: "{{ ha_stack_dir }}"
   environment: "{{ compose_global_env }}"
@@ -159,8 +151,8 @@
   tags: [restore]
 
 - name: Check if cloudflared is running (when enabled)
-  ansible.builtin.command:
-    cmd: docker ps --filter "name=cloudflared" --format "{{ '{{' }}.Names{{ '}}' }}"
+  ansible.builtin.shell: |
+    sg docker -c 'docker ps --filter "name=cloudflared" --format "{{ '{{' }}.Names{{ '}}' }}"'
   register: _cf_running
   changed_when: false
   when: enable_cloudflared | default(false)
