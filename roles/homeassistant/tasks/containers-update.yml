@@ -35,12 +35,8 @@
 
 # Pull + up ONLY homeassistant (faster/safer); if needed, put back to "all services" if you want
 - name: Docker compose pull (all services)
-  ansible.builtin.command:
-    cmd: >
-      docker compose
-      -p {{ ha_project | quote }}
-      -f {{ ha_stack_dir }}/docker-compose.yml
-      pull
+  ansible.builtin.shell: |
+    sg docker -c 'docker compose -p {{ ha_project | quote }} -f {{ ha_stack_dir }}/docker-compose.yml pull'
   args:
     chdir: "{{ ha_stack_dir }}"
   environment: "{{ compose_global_env | mandatory('compose_global_env undefined — env_boot skipped or failed') }}"
@@ -49,12 +45,8 @@
   tags: [ ha_update, containers_update ]
 
 - name: Docker compose up -d (all services)
-  ansible.builtin.command:
-    cmd: >
-      docker compose
-      -p {{ ha_project | quote }}
-      -f {{ ha_stack_dir }}/docker-compose.yml
-      up -d
+  ansible.builtin.shell: |
+    sg docker -c 'docker compose -p {{ ha_project | quote }} -f {{ ha_stack_dir }}/docker-compose.yml up -d'
   args:
     chdir: "{{ ha_stack_dir }}"
   environment: "{{ compose_global_env | mandatory('compose_global_env undefined — env_boot skipped or failed') }}"
