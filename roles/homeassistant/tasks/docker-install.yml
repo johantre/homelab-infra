@@ -49,5 +49,5 @@
   become: true
 
 # IMPORTANT: meta does not support `when:`; now it's in an included file that only runs on ha_target.
-- name: Reset connection so docker group takes effect
-  ansible.builtin.meta: reset_connection
+# - name: Reset connection so docker group takes effect
+#   ansible.builtin.meta: reset_connection
