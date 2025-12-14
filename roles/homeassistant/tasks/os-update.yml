@@ -28,15 +28,9 @@
     path: /var/run/reboot-required
   register: reboot_flag
 
-- name: Reboot if required (bypass Ansible's local connection check)
+- name: Reboot if required
   become: true
-  ansible.builtin.shell: "sleep 2 && /sbin/reboot"
-  async: 1
-  poll: 0
-  when: reboot_flag.stat.exists
-
-- name: Wait for reboot to complete
-  ansible.builtin.wait_for_connection:
-    delay: 60
-    timeout: 900
+  reboot:
+    msg: "Reboot triggered by Ansible after OS updates"
+    reboot_timeout: 900
   when: reboot_flag.stat.exists
