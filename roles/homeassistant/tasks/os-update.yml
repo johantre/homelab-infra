@@ -33,4 +33,7 @@
   reboot:
     msg: "Reboot triggered by Ansible after OS updates"
     reboot_timeout: 900
+  delegate_to: 127.0.0.1
+  vars:
+    ansible_connection: ssh
   when: reboot_flag.stat.exists

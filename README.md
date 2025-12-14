@@ -141,11 +141,12 @@ This copies the default public key to ~/.ssh/id_ed25519.pub file to ~/.ssh/autho
 
 # TODO's:
 * Attention for need for sudo pass **first time** to set nopassword!
-* Move to GitHub actions as controller but with self-hosted runners on the target node
-  * extra volume for local backups
-* Deployment from fresh ubuntu flashed disk
-* Test deployment is working
-* Autoinstall + cloud-init (NoCloud) met Ansible pull-model
+* extra volume for local backups: will be done @host install time
+  * mount should be done in post-install script (setup-machine.sh generated on de 2nd USB disk)
+* Ansible pull-model? 
+* setup backup after Ansible deploy (local, dropbox, or seed box)
+* mount backup volume if needed
+* documenting overall deployment process
 * Continuous 
     * backup strategy (to serve as disaster recovery)
     * update strategy (deployments, as well as infra)
