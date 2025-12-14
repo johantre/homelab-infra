@@ -73,6 +73,7 @@
   tags: [restore]
 
 - name: Stop HA stack before restore
+  no_log: true
   ansible.builtin.shell: |
     sg docker -c 'docker compose -p {{ ha_project | quote }} -f {{ ha_stack_dir }}/docker-compose.yml down'
   args:
@@ -124,6 +125,7 @@
   tags: [restore]
 
 - name: Start HA stack after restore
+  no_log: true
   ansible.builtin.shell: |
     sg docker -c 'docker compose -p {{ ha_project | quote }} -f {{ ha_stack_dir }}/docker-compose.yml up -d'
   args:

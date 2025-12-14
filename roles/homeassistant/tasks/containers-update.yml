@@ -35,6 +35,7 @@
 
 # Pull + up ONLY homeassistant (faster/safer); if needed, put back to "all services" if you want
 - name: Docker compose pull (all services)
+  no_log: true
   ansible.builtin.shell: |
     sg docker -c 'docker compose -p {{ ha_project | quote }} -f {{ ha_stack_dir }}/docker-compose.yml pull'
   args:
@@ -45,6 +46,7 @@
   tags: [ ha_update, containers_update ]
 
 - name: Docker compose up -d (all services)
+  no_log: true
   ansible.builtin.shell: |
     sg docker -c 'docker compose -p {{ ha_project | quote }} -f {{ ha_stack_dir }}/docker-compose.yml up -d'
   args:

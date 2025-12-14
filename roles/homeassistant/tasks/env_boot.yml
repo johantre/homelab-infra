@@ -1,6 +1,7 @@
 ## Resolve variables (single source of truth)
 ## 1) If env_file is given read .env (KEY=VALUE)
 - name: Resolve variables from .env (properties) when provided
+  no_log: true
   ansible.builtin.set_fact:
     github_username: "{{ github_username | default(lookup('ini', 'GITHUB_USERNAME file=' + env_file + ' type=properties'), true) }}"
     github_pat:       "{{ github_pat       | default(lookup('ini', 'GITHUB_PAT file=' + env_file + ' type=properties'), true) }}"
@@ -9,6 +10,7 @@
 
 ## 2) No env_file given, get from OS-env
 - name: Resolve variables from OS env when no env_file is provided
+  no_log: true
   ansible.builtin.set_fact:
     github_username: "{{ github_username | default(lookup('env','GITHUB_USERNAME'), true) }}"
     github_pat:       "{{ github_pat       | default(lookup('env','GITHUB_PAT'), true) }}"
@@ -81,6 +83,7 @@
 
 # One global env that can be used everywhere
 - name: Build global Compose env (CF)
+  no_log: true
   ansible.builtin.set_fact:
     compose_global_env: "{{ {'CF_TUNNEL_TOKEN': cf_tunnel_token} }}"
   when: (enable_cloudflared | default(false)) | bool
