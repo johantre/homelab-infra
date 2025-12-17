@@ -1,0 +1,103 @@
+---
+# Seedbox restore - discover production HA on network and sync .storage
+
+- name: Copy seedbox discovery script to target
+  ansible.builtin.copy:
+    src: scripts/find-seedbox.sh
+    dest: /tmp/find-seedbox.sh
+    mode: '0755'
+  tags: [seedbox_restore]
+
+- name: Discover seedbox on network
+  ansible.builtin.shell: bash /tmp/find-seedbox.sh
+  register: seedbox_discovery
+  failed_when: seedbox_discovery.rc != 0
+  changed_when: false
+  tags: [seedbox_restore]
+
+- name: Set seedbox IP from discovery
+  ansible.builtin.set_fact:
+    seedbox_ip: "{{ seedbox_discovery.stdout_lines | last }}"
+  tags: [seedbox_restore]
+
+- name: Show discovered seedbox
+  ansible.builtin.debug:
+    msg: "Discovered seedbox at: {{ seedbox_ip }}"
+  tags: [seedbox_restore]
+
+- name: Determine SSH user for seedbox
+  ansible.builtin.shell: |
+    for USER in ubuntu root; do
+      if ssh -o ConnectTimeout=2 -o StrictHostKeyChecking=no -o BatchMode=yes $USER@{{ seedbox_ip }} "exit" 2>/dev/null; then
+        echo $USER
+        exit 0
+      fi
+    done
+    exit 1
+  register: seedbox_user_check
+  failed_when: seedbox_user_check.rc != 0
+  changed_when: false
+  tags: [seedbox_restore]
+
+- name: Set seedbox SSH user
+  ansible.builtin.set_fact:
+    seedbox_user: "{{ seedbox_user_check.stdout }}"
+  tags: [seedbox_restore]
+
+- name: Find .storage path on seedbox
+  ansible.builtin.shell: |
+    for PATH in /config/.storage /home/{{ seedbox_user }}/homelab/target/homeassistant-ansible/config/.storage /home/{{ seedbox_user }}/homelab/target/homeassistant/config/.storage; do
+      if ssh -o ConnectTimeout=2 -o StrictHostKeyChecking=no {{ seedbox_user }}@{{ seedbox_ip }} "test -d $PATH" 2>/dev/null; then
+        echo $PATH
+        exit 0
+      fi
+    done
+    exit 1
+  register: seedbox_storage_path
+  failed_when: seedbox_storage_path.rc != 0
+  changed_when: false
+  tags: [seedbox_restore]
+
+- name: Stop HA container before .storage sync
+  ansible.builtin.shell: |
+    sg docker -c 'docker stop {{ ha_container_name }}'
+  register: ha_stop
+  failed_when: false
+  changed_when: ha_stop.rc == 0
+  tags: [seedbox_restore]
+
+- name: Sync .storage from seedbox to target
+  ansible.builtin.shell: |
+    rsync -avz --delete \
+      --exclude='backups/' \
+      -e "ssh -o StrictHostKeyChecking=no" \
+      {{ seedbox_user }}@{{ seedbox_ip }}:{{ seedbox_storage_path.stdout }}/ \
+      {{ ha_config_dir }}/.storage/
+  register: storage_sync
+  changed_when: true
+  tags: [seedbox_restore]
+
+- name: Fix .storage ownership
+  ansible.builtin.file:
+    path: "{{ ha_config_dir }}/.storage"
+    owner: "{{ runtime_uid }}"
+    group: "{{ runtime_gid }}"
+    recurse: yes
+    state: directory
+  tags: [seedbox_restore]
+
+- name: Start HA container after .storage sync
+  ansible.builtin.shell: |
+    sg docker -c 'docker start {{ ha_container_name }}'
+  register: ha_start
+  changed_when: ha_start.rc == 0
+  tags: [seedbox_restore]
+
+- name: Seedbox restore summary
+  ansible.builtin.debug:
+    msg:
+      - "✅ .storage restored from seedbox!"
+      - "Seedbox: {{ seedbox_user }}@{{ seedbox_ip }}"
+      - "Path: {{ seedbox_storage_path.stdout }}"
+      - "Target: {{ ha_config_dir }}/.storage/"
+  tags: [seedbox_restore]

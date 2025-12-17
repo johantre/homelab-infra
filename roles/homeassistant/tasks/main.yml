@@ -260,3 +260,13 @@
 - import_tasks: bootstrap-auth.yml
   when: ha_bootstrap_enable | default(true)
   tags: [ha_bootstrap]
+
+# Seedbox restore opt-in via tags (runs AFTER full deployment)
+- name: Include seedbox restore (opt-in via tags)
+  include_tasks:
+    file: seedbox-restore.yml
+    apply:
+      tags:
+        - seedbox_restore
+  tags: [seedbox_restore, never]
+  when: "'ha_target' in group_names"
