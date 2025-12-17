@@ -28,7 +28,7 @@ ha_restore_safety_backup: true
 ha_restore_confirm: true
 ha_restore_backup: ""
 ha_network_mode: bridge
-ha_host_port: 8124
+ha_host_port: 8123
 
 # --- Other HA integrations, addon's
 # Feature flags
