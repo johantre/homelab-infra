@@ -1,87 +1,153 @@
 ---
 # Seedbox restore - discover production HA on network and sync .storage
 
-- name: Copy seedbox discovery script to target
-  ansible.builtin.copy:
-    src: scripts/find-seedbox.sh
-    dest: /tmp/find-seedbox.sh
-    mode: '0755'
+- name: Install seedbox discovery dependencies
+  ansible.builtin.apt:
+    name:
+      - nmap
+      - avahi-utils
+    state: present
+    update_cache: true
+  become: true
 
-- name: Discover seedbox on network
-  ansible.builtin.shell: bash /tmp/find-seedbox.sh
-  register: seedbox_discovery
-  failed_when: seedbox_discovery.rc != 0
-  changed_when: false
+# Block with guaranteed key cleanup
+- block:
+    - name: Deploy private key from GitHub Secrets (runner only)
+      ansible.builtin.copy:
+        content: "{{ lookup('env', 'SSH_PRIV_KEY') }}"
+        dest: "{{ ansible_env.HOME }}/.ssh/id_ed25519_seedbox"
+        mode: '0600'
+      when: ansible_connection == 'local'
+      no_log: true
 
-- name: Set seedbox IP from discovery
-  ansible.builtin.set_fact:
-    seedbox_ip: "{{ seedbox_discovery.stdout_lines | last }}"
+    - name: Configure SSH to use seedbox key (runner only)
+      ansible.builtin.lineinfile:
+        path: "{{ ansible_env.HOME }}/.ssh/config"
+        line: "IdentityFile {{ ansible_env.HOME }}/.ssh/id_ed25519_seedbox"
+        create: yes
+        mode: '0600'
+      when: ansible_connection == 'local'
 
-- name: Show discovered seedbox
-  ansible.builtin.debug:
-    msg: "Discovered seedbox at: {{ seedbox_ip }}"
+    - name: Copy seedbox discovery script to target
+      ansible.builtin.copy:
+        src: roles/homeassistant/files/find-seedbox.sh
+        dest: /tmp/find-seedbox.sh
+        mode: '0755'
 
-- name: Determine SSH user for seedbox
-  ansible.builtin.shell: |
-    for USER in ubuntu root; do
-      if ssh -o ConnectTimeout=2 -o StrictHostKeyChecking=no -o BatchMode=yes $USER@{{ seedbox_ip }} "exit" 2>/dev/null; then
-        echo $USER
-        exit 0
-      fi
-    done
-    exit 1
-  register: seedbox_user_check
-  failed_when: seedbox_user_check.rc != 0
-  changed_when: false
+    - name: Discover seedbox on network
+      ansible.builtin.shell: bash /tmp/find-seedbox.sh
+      register: seedbox_discovery
+      failed_when: seedbox_discovery.rc != 0
+      changed_when: false
 
-- name: Set seedbox SSH user
-  ansible.builtin.set_fact:
-    seedbox_user: "{{ seedbox_user_check.stdout }}"
+    - name: Set seedbox IP from discovery
+      ansible.builtin.set_fact:
+        seedbox_ip: "{{ seedbox_discovery.stdout_lines | last }}"
 
-- name: Find .storage path on seedbox
-  ansible.builtin.shell: |
-    for PATH in /config/.storage /home/{{ seedbox_user }}/homelab/target/homeassistant-ansible/config/.storage /home/{{ seedbox_user }}/homelab/target/homeassistant/config/.storage; do
-      if ssh -o ConnectTimeout=2 -o StrictHostKeyChecking=no {{ seedbox_user }}@{{ seedbox_ip }} "test -d $PATH" 2>/dev/null; then
-        echo $PATH
-        exit 0
-      fi
-    done
-    exit 1
-  register: seedbox_storage_path
-  failed_when: seedbox_storage_path.rc != 0
-  changed_when: false
+    - name: Show discovered seedbox
+      ansible.builtin.debug:
+        msg: "Discovered seedbox at: {{ seedbox_ip }}"
 
-- name: Stop HA container before .storage sync
-  ansible.builtin.shell: |
-    sg docker -c 'docker stop {{ ha_container_name }}'
-  changed_when: true
+    - name: Determine SSH user for seedbox
+      ansible.builtin.shell: |
+        for USER in ubuntu root; do
+          if ssh -o ConnectTimeout=2 -o StrictHostKeyChecking=no -o BatchMode=yes $USER@{{ seedbox_ip }} "exit" 2>/dev/null; then
+            echo $USER
+            exit 0
+          fi
+        done
+        exit 1
+      register: seedbox_user_check
+      failed_when: seedbox_user_check.rc != 0
+      changed_when: false
 
-- name: Sync .storage from seedbox to target
-  ansible.builtin.shell: |
-    rsync -avz --delete \
-      --exclude='backups/' \
-      -e "ssh -o StrictHostKeyChecking=no" \
-      {{ seedbox_user }}@{{ seedbox_ip }}:{{ seedbox_storage_path.stdout }}/ \
-      {{ ha_config_dir }}/.storage/
-  changed_when: true
+    - name: Set seedbox SSH user
+      ansible.builtin.set_fact:
+        seedbox_user: "{{ seedbox_user_check.stdout }}"
 
-- name: Fix .storage ownership
-  ansible.builtin.file:
-    path: "{{ ha_config_dir }}/.storage"
-    owner: "{{ runtime_uid }}"
-    group: "{{ runtime_gid }}"
-    recurse: yes
-    state: directory
+    - name: Find .storage path on seedbox
+      ansible.builtin.shell: |
+        if ssh -o ConnectTimeout=2 -o StrictHostKeyChecking=no {{ seedbox_user }}@{{ seedbox_ip }} "test -d /root/homeassistant/.storage" 2>/dev/null; then
+          echo /root/homeassistant/.storage
+        elif ssh -o ConnectTimeout=2 -o StrictHostKeyChecking=no {{ seedbox_user }}@{{ seedbox_ip }} "test -d /home/homeassistant/.storage" 2>/dev/null; then
+          echo /home/homeassistant/.storage
+        elif ssh -o ConnectTimeout=2 -o StrictHostKeyChecking=no {{ seedbox_user }}@{{ seedbox_ip }} "test -d /config/.storage" 2>/dev/null; then
+          echo /config/.storage
+        elif ssh -o ConnectTimeout=2 -o StrictHostKeyChecking=no {{ seedbox_user }}@{{ seedbox_ip }} "test -d /home/{{ seedbox_user }}/homelab/target/homeassistant-ansible/config/.storage" 2>/dev/null; then
+          echo /home/{{ seedbox_user }}/homelab/target/homeassistant-ansible/config/.storage
+        elif ssh -o ConnectTimeout=2 -o StrictHostKeyChecking=no {{ seedbox_user }}@{{ seedbox_ip }} "test -d /home/{{ seedbox_user }}/homelab/target/homeassistant/config/.storage" 2>/dev/null; then
+          echo /home/{{ seedbox_user }}/homelab/target/homeassistant/config/.storage
+        else
+          exit 1
+        fi
+      register: seedbox_storage_search
+      failed_when: seedbox_storage_search.rc != 0
+      changed_when: false
 
-- name: Start HA container after .storage sync
-  ansible.builtin.shell: |
-    sg docker -c 'docker start {{ ha_container_name }}'
-  changed_when: true
+    - name: Set storage path
+      ansible.builtin.set_fact:
+        seedbox_storage_path: "{{ seedbox_storage_search.stdout }}"
 
-- name: Seedbox restore summary
-  ansible.builtin.debug:
-    msg:
-      - "✅ .storage restored from seedbox!"
-      - "Seedbox: {{ seedbox_user }}@{{ seedbox_ip }}"
-      - "Path: {{ seedbox_storage_path.stdout }}"
-      - "Target: {{ ha_config_dir }}/.storage/"
+    - name: Stop HA container before .storage sync
+      ansible.builtin.shell: |
+        sg docker -c 'docker stop {{ ha_container_name }}'
+      changed_when: true
+
+    - name: Sync .storage from seedbox to target via tar over SSH
+      ansible.builtin.shell: |
+        set -e
+        set -o pipefail
+        ssh -o StrictHostKeyChecking=no {{ seedbox_user }}@{{ seedbox_ip }} \
+          "tar -czf - -C {{ seedbox_storage_path }} ." | \
+        ssh -o StrictHostKeyChecking=no {{ ansible_user }}@{{ ansible_host }} \
+          "tar -xzf - -C {{ ha_config_dir }}/.storage/"
+      args:
+        executable: /bin/bash
+      delegate_to: localhost
+      changed_when: true
+
+    - name: Verify .storage was synced (fail loud if empty)
+      ansible.builtin.shell: |
+        SIZE=$(du -sb {{ ha_config_dir }}/.storage/ | cut -f1)
+        if [ "$SIZE" -lt 1000000 ]; then
+          echo "ERROR: .storage sync failed - only $SIZE bytes transferred"
+          exit 1
+        fi
+        echo "Success: $SIZE bytes in .storage"
+      changed_when: false
+
+    - name: Fix .storage ownership
+      ansible.builtin.file:
+        path: "{{ ha_config_dir }}/.storage"
+        owner: "{{ runtime_uid }}"
+        group: "{{ runtime_gid }}"
+        recurse: yes
+        state: directory
+
+    - name: Start HA container after .storage sync
+      ansible.builtin.shell: |
+        sg docker -c 'docker start {{ ha_container_name }}'
+      changed_when: true
+
+    - name: Seedbox restore summary
+      ansible.builtin.debug:
+        msg:
+          - "✅ .storage restored from seedbox!"
+          - "Seedbox: {{ seedbox_user }}@{{ seedbox_ip }}"
+          - "Path: {{ seedbox_storage_path }}"
+          - "Target: {{ ha_config_dir }}/.storage/"
+
+  always:
+    - name: Remove seedbox private key (GUARANTEED cleanup)
+      ansible.builtin.file:
+        path: "{{ ansible_env.HOME }}/.ssh/id_ed25519_seedbox"
+        state: absent
+      when: ansible_connection == 'local'
+
+    - name: Remove SSH config entry (cleanup)
+      ansible.builtin.lineinfile:
+        path: "{{ ansible_env.HOME }}/.ssh/config"
+        line: "IdentityFile {{ ansible_env.HOME }}/.ssh/id_ed25519_seedbox"
+        state: absent
+      when: ansible_connection == 'local'
+      failed_when: false
