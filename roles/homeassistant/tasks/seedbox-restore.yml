@@ -39,6 +39,18 @@
         msg: "Key exists: {{ key_stat.stat.exists | default('N/A') }}, Mode: {{ key_stat.stat.mode | default('N/A') }}"
       when: ansible_connection == 'local'
 
+    - name: Debug - Validate key format
+      ansible.builtin.shell: |
+        ssh-keygen -l -f ~/.ssh/id_ed25519_seedbox_priv 2>&1
+      register: key_validate
+      when: ansible_connection == 'local'
+      failed_when: false
+
+    - name: Debug - Show validation result
+      ansible.builtin.debug:
+        msg: "Key validation: {{ key_validate.stdout }}"
+      when: ansible_connection == 'local'
+
     - name: Debug - Test SSH with deployed key
       ansible.builtin.shell: |
         ssh -i ~/.ssh/id_ed25519_seedbox_priv -o StrictHostKeyChecking=no -o ConnectTimeout=2 root@192.168.3.8 "echo SUCCESS"
