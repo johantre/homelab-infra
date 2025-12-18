@@ -6,6 +6,7 @@
     github_username: "{{ github_username | default(lookup('ini', 'GITHUB_USERNAME file=' + env_file + ' type=properties'), true) }}"
     github_pat:       "{{ github_pat       | default(lookup('ini', 'GITHUB_PAT file=' + env_file + ' type=properties'), true) }}"
     cf_tunnel_token:  "{{ cf_tunnel_token  | default(lookup('ini', 'CF_TUNNEL_TOKEN file=' + env_file + ' type=properties'), true) }}"
+    ssh_priv_key_b64: "{{ ssh_priv_key_b64 | default(lookup('env','SSH_PRIV_KEY_B64'), true) }}"
   when: env_file is defined
 
 ## 2) No env_file given, get from OS-env
@@ -24,7 +25,23 @@
     that:
       - github_username | length > 0
       - github_pat | length > 0
-    fail_msg: "Missing GITHUB_USERNAME or GITHUB_PAT (via --extra-vars, env_file, or OS env)."
+    fail_msg: "❌ Missing GITHUB_USERNAME or GITHUB_PAT (via --extra-vars, env_file, or OS env). ❌"
+
+- name: Assert CF_TUNNEL_TOKEN present when cloudflared is enabled
+  no_log: true
+  ansible.builtin.assert:
+    that:
+      - cf_tunnel_token | length > 0
+    fail_msg: "❌ enable_cloudflared=true but CF_TUNNEL_TOKEN missing. ❌"
+  when: enable_cloudflared | default(false)
+
+- name: Assert SSH private key present when connection is local
+  no_log: true
+  ansible.builtin.assert:
+    that:
+      - ssh_priv_key_b64 | length > 0
+    fail_msg: "❌ Missing SSH_PRIV_KEY_B64 for self-hosted runner deployment. ❌"
+  when: ansible_connection == 'local'
 
 - name: Validate all critical variables are defined
   ansible.builtin.assert:
@@ -72,14 +89,6 @@
       
       Run with -vvv to see which variable is undefined.
     success_msg: "✅ All critical variables validated"
-
-- name: Assert CF_TUNNEL_TOKEN present when cloudflared is enabled
-  no_log: true
-  ansible.builtin.assert:
-    that:
-      - cf_tunnel_token | length > 0
-    fail_msg: "enable_cloudflared=true but CF_TUNNEL_TOKEN missing."
-  when: enable_cloudflared | default(false)
 
 # One global env that can be used everywhere
 - name: Build global Compose env (CF)
