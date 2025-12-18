@@ -5,6 +5,16 @@ NETWORK="${1:-192.168.3.0/24}"
 HA_PORT="8123"
 SSH_USERS="ubuntu root"  # Try both
 
+# Auto-detect SSH key (runner has deployed key, Linux box uses agent forwarding)
+if [ -f ~/.ssh/id_ed25519_seedbox_priv ]; then
+    SSH_KEY_ARG="-i ~/.ssh/id_ed25519_seedbox_priv"
+    echo "Using deployed SSH key"
+else
+    SSH_KEY_ARG=""
+    echo "Using SSH agent forwarding"
+fi
+echo ""
+
 # Check required dependencies
 echo "Checking dependencies..."
 MISSING_DEPS=()
@@ -49,7 +59,7 @@ for IP in $IPS; do
     FOUND_USER=""
     # Try to find working SSH user
     for USER in $SSH_USERS; do
-        if ssh -o ConnectTimeout=2 -o StrictHostKeyChecking=no -o BatchMode=yes $USER@$IP "exit" 2>/dev/null; then
+        if ssh $SSH_KEY_ARG -o ConnectTimeout=2 -o StrictHostKeyChecking=no -o BatchMode=yes $USER@$IP "exit" 2>/dev/null; then
             FOUND_USER=$USER
             break
         fi
@@ -65,7 +75,7 @@ for IP in $IPS; do
     # Try multiple possible .storage locations
     STORAGE_PATH=""
     for PATH_CHECK in "/config/.storage" "/home/$FOUND_USER/homelab/target/homeassistant-ansible/config/.storage" "/home/$FOUND_USER/homelab/target/homeassistant/config/.storage"; do
-        if ssh -o ConnectTimeout=2 -o StrictHostKeyChecking=no $FOUND_USER@$IP "test -d $PATH_CHECK" 2>/dev/null; then
+        if ssh $SSH_KEY_ARG -o ConnectTimeout=2 -o StrictHostKeyChecking=no $FOUND_USER@$IP "test -d $PATH_CHECK" 2>/dev/null; then
             STORAGE_PATH=$PATH_CHECK
             echo "  ✅ Found .storage at: $STORAGE_PATH"
             break
@@ -78,7 +88,7 @@ for IP in $IPS; do
     fi
     
     # Get size in bytes
-    SIZE=$(ssh -o ConnectTimeout=2 -o StrictHostKeyChecking=no $FOUND_USER@$IP "du -sb $STORAGE_PATH 2>/dev/null | cut -f1" 2>/dev/null)
+    SIZE=$(ssh $SSH_KEY_ARG -o ConnectTimeout=2 -o StrictHostKeyChecking=no $FOUND_USER@$IP "du -sb $STORAGE_PATH 2>/dev/null | cut -f1" 2>/dev/null)
     
     if [ -z "$SIZE" ]; then
         echo "  ⚠️  Could not read .storage size"

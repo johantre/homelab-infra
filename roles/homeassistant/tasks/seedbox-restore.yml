@@ -15,7 +15,7 @@
     - name: Deploy private key from GitHub Secrets (runner only)
       ansible.builtin.copy:
         content: "{{ lookup('env', 'SSH_PRIV_KEY') }}"
-        dest: "{{ ansible_env.HOME }}/.ssh/id_ed25519_seedbox"
+        dest: "{{ ansible_env.HOME }}/.ssh/id_ed25519_seedbox_priv"
         mode: '0600'
       when: ansible_connection == 'local'
       no_log: true
@@ -23,9 +23,32 @@
     - name: Configure SSH to use seedbox key (runner only)
       ansible.builtin.lineinfile:
         path: "{{ ansible_env.HOME }}/.ssh/config"
-        line: "IdentityFile {{ ansible_env.HOME }}/.ssh/id_ed25519_seedbox"
+        line: "IdentityFile {{ ansible_env.HOME }}/.ssh/id_ed25519_seedbox_priv"
         create: yes
         mode: '0600'
+      when: ansible_connection == 'local'
+
+    - name: Debug - Check deployed key exists
+      ansible.builtin.stat:
+        path: "{{ ansible_env.HOME }}/.ssh/id_ed25519_seedbox_priv"
+      register: key_stat
+      when: ansible_connection == 'local'
+
+    - name: Debug - Show key info
+      ansible.builtin.debug:
+        msg: "Key exists: {{ key_stat.stat.exists | default('N/A') }}, Mode: {{ key_stat.stat.mode | default('N/A') }}"
+      when: ansible_connection == 'local'
+
+    - name: Debug - Test SSH with deployed key
+      ansible.builtin.shell: |
+        ssh -i ~/.ssh/id_ed25519_seedbox_priv -o StrictHostKeyChecking=no -o ConnectTimeout=2 root@192.168.3.8 "echo SUCCESS"
+      register: ssh_test
+      when: ansible_connection == 'local'
+      failed_when: false
+
+    - name: Debug - Show SSH test result
+      ansible.builtin.debug:
+        msg: "SSH test RC: {{ ssh_test.rc | default('N/A') }}, Output: {{ ssh_test.stdout | default('N/A') }}, Error: {{ ssh_test.stderr | default('N/A') }}"
       when: ansible_connection == 'local'
 
     - name: Copy seedbox discovery script to target
@@ -140,14 +163,14 @@
   always:
     - name: Remove seedbox private key (GUARANTEED cleanup)
       ansible.builtin.file:
-        path: "{{ ansible_env.HOME }}/.ssh/id_ed25519_seedbox"
+        path: "{{ ansible_env.HOME }}/.ssh/id_ed25519_seedbox_priv"
         state: absent
       when: ansible_connection == 'local'
 
     - name: Remove SSH config entry (cleanup)
       ansible.builtin.lineinfile:
         path: "{{ ansible_env.HOME }}/.ssh/config"
-        line: "IdentityFile {{ ansible_env.HOME }}/.ssh/id_ed25519_seedbox"
+        line: "IdentityFile {{ ansible_env.HOME }}/.ssh/id_ed25519_seedbox_priv"
         state: absent
       when: ansible_connection == 'local'
       failed_when: false
