@@ -14,7 +14,7 @@
 - block:
     - name: Deploy private key from GitHub Secrets (runner only)
       ansible.builtin.copy:
-        content: "{{ lookup('env', 'SSH_PRIV_KEY') }}"
+        content: "{{ lookup('env', 'SSH_PRIV_KEY_B64') | b64decode }}"
         dest: "{{ ansible_env.HOME }}/.ssh/id_ed25519_seedbox_priv"
         mode: '0600'
       when: ansible_connection == 'local'
