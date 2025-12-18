@@ -75,6 +75,12 @@
       failed_when: seedbox_discovery.rc != 0
       changed_when: false
 
+    - name: Show discovery output, line by line
+      ansible.builtin.debug:
+        msg: "{{ item }}"
+      loop: "{{ seedbox_discovery.stdout_lines }}"
+      when: seedbox_discovery.stdout_lines is defined and seedbox_discovery.stdout_lines | length > 0
+
     - name: Set seedbox IP from discovery
       ansible.builtin.set_fact:
         seedbox_ip: "{{ seedbox_discovery.stdout_lines | last }}"
