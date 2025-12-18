@@ -218,7 +218,7 @@ jobs:
           # Check if HA is responding (wait max 60 seconds)
           echo "Waiting for Home Assistant to be ready..."
           for i in {1..12}; do
-            if curl -f -s "http://localhost:8124/" > /dev/null 2>&1; then
+            if curl -f -s "http://localhost:8123/" > /dev/null 2>&1; then
               echo "✅ Home Assistant is responding!"
               break
             fi
