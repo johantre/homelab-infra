@@ -163,7 +163,7 @@ jobs:
         env:
           GITHUB_USERNAME: ${{ secrets.GH_USERNAME }}
           GITHUB_PAT: ${{ secrets.GH_PAT }}
-          SSH_PRIV_KEY: ${{ secrets.SSH_PRIV_KEY }}
+          SSH_PRIV_KEY_B64: ${{ secrets.SSH_PRIV_KEY_B64 }}
           CF_TUNNEL_TOKEN: ${{ secrets.CF_TUNNEL_TOKEN }}
           HA_USER_USERNAME: ${{ secrets.HA_USER_USERNAME }}
           HA_USER_PASSWORD: ${{ secrets.HA_USER_PASSWORD }}
