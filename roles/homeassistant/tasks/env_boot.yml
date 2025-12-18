@@ -6,7 +6,6 @@
     github_username: "{{ github_username | default(lookup('ini', 'GITHUB_USERNAME file=' + env_file + ' type=properties'), true) }}"
     github_pat:       "{{ github_pat       | default(lookup('ini', 'GITHUB_PAT file=' + env_file + ' type=properties'), true) }}"
     cf_tunnel_token:  "{{ cf_tunnel_token  | default(lookup('ini', 'CF_TUNNEL_TOKEN file=' + env_file + ' type=properties'), true) }}"
-    ssh_priv_key_b64: "{{ ssh_priv_key_b64 | default(lookup('env','SSH_PRIV_KEY_B64'), true) }}"
   when: env_file is defined
 
 ## 2) No env_file given, get from OS-env
@@ -16,6 +15,7 @@
     github_username: "{{ github_username | default(lookup('env','GITHUB_USERNAME'), true) }}"
     github_pat:       "{{ github_pat       | default(lookup('env','GITHUB_PAT'), true) }}"
     cf_tunnel_token:  "{{ cf_tunnel_token  | default(lookup('env','CF_TUNNEL_TOKEN'), true) }}"
+    ssh_priv_key_b64: "{{ ssh_priv_key_b64 | default(lookup('env','SSH_PRIV_KEY_B64'), true) }}"
   when: env_file is not defined
 
 # Loud fail – explicit & clear
