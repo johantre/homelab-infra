@@ -70,7 +70,7 @@
         mode: '0755'
 
     - name: Discover seedbox on network
-      ansible.builtin.shell: bash /tmp/find-seedbox.sh {{ ha_host_port }}
+      ansible.builtin.shell: bash /tmp/find-seedbox.sh 192.168.3.0/24 {{ ha_host_port }}
       register: seedbox_discovery
       failed_when: seedbox_discovery.rc != 0
       changed_when: false
