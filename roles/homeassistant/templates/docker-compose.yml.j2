@@ -12,7 +12,7 @@ services:
     network_mode: "host"
 {% else %}
     ports:
-      - "{{ ha_host_port }}:8123"
+      - "{{ ha_host_port }}:{{ ha_host_port }}"
 {% endif %}
 {% if enable_cloudflared | default(false) %}
   cloudflared:

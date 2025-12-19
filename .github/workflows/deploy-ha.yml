@@ -217,8 +217,10 @@ jobs:
           
           # Check if HA is responding (wait max 60 seconds)
           echo "Waiting for Home Assistant to be ready..."
+          HA_PORT=$(cat ~/homelab/target/ha-stack-ansible/.ha_port)
+          echo "HA_PORT=${HA_PORT}" >> $GITHUB_ENV
           for i in {1..12}; do
-            if curl -f -s "http://localhost:8123/" > /dev/null 2>&1; then
+            if curl -f -s "http://localhost:${HA_PORT}/" > /dev/null 2>&1; then
               echo "✅ Home Assistant is responding!"
               break
             fi
@@ -243,7 +245,7 @@ jobs:
           echo "📊 DEPLOYMENT SUMMARY"
           echo "======================================"
           echo "Deployed to: localhost (self-hosted runner)"
-          echo "Access URL: http://$(hostname -I | awk '{print $1}'):8124"
+          echo "Access URL: http://$(hostname -I | awk '{print $1}'):${HA_PORT}"
           echo ""
           echo "Running containers:"
           sg docker -c 'docker ps --filter "name=homeassistant\|cloudflared\|code_server\|esphome" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"' || echo "Could not list containers"

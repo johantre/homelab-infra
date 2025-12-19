@@ -251,6 +251,13 @@
     msg: "Compose up ran."
   changed_when: _compose_changed
 
+- name: Write HA port to artifact (for GitHub workflow verification)
+  ansible.builtin.copy:
+    content: "{{ ha_host_port }}\n"
+    dest: "{{ ha_stack_dir }}/.ha_port"
+    mode: "0644"
+  when: "'ha_target' in group_names"
+
 # Show compose result (nice for troubleshooting)
 - name: Show compose result (debug)
   ansible.builtin.debug:

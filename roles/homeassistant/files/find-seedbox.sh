@@ -1,9 +1,15 @@
 #!/bin/bash
-# Find seedbox IP using nmap + .storage size check
-
+# Find seedbox IP using nmap + .storage size check (through positional arguments)
 NETWORK="${1:-192.168.3.0/24}"
-HA_PORT="8123"
+HA_PORT="$2"
 SSH_USERS="ubuntu root"  # Try both
+
+if [ -z "$HA_PORT" ]; then
+    echo "❌ ERROR: HA_PORT not provided!"
+    echo "Usage: $0 [NETWORK] <HA_PORT>"
+    echo "Example: $0 192.168.3.0/24 8123"
+    exit 1
+fi
 
 # Auto-detect SSH key (runner has deployed key, Linux box uses agent forwarding)
 if [ -f ~/.ssh/id_ed25519_seedbox_priv ]; then

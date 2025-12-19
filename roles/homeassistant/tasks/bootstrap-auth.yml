@@ -36,7 +36,7 @@
 
 - name: Wait until HA API answers
   ansible.builtin.shell: |
-    sg docker -c 'docker exec {{ ha_container_name }} sh -lc "curl -fsS http://127.0.0.1:8123/ || exit 1"'
+    sg docker -c 'docker exec {{ ha_container_name }} sh -lc "curl -fsS http://127.0.0.1:{{ ha_host_port }}/ || exit 1"'
   register: ha_ping
   retries: 30
   delay: 2
@@ -97,7 +97,7 @@
 
 - name: Wait for HA to come back up after restart
   ansible.builtin.shell: |
-    sg docker -c 'docker exec {{ ha_container_name }} sh -lc "curl -fsS http://127.0.0.1:8123/ || exit 1"'
+    sg docker -c 'docker exec {{ ha_container_name }} sh -lc "curl -fsS http://127.0.0.1:{{ ha_host_port }}/ || exit 1"'
   register: ha_ping_after_restart
   retries: 30
   delay: 2
