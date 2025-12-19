@@ -27,6 +27,7 @@ ha_container_name: homeassistant_ansible
 ha_restore_safety_backup: true
 ha_restore_confirm: true
 ha_restore_backup: ""
+seedbox_network: "192.168.3.0/24"
 ha_network_mode: bridge
 ha_host_port: 8123
 

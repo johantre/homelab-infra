@@ -70,16 +70,14 @@
         mode: '0755'
 
     - name: Discover seedbox on network
-      ansible.builtin.shell: bash /tmp/find-seedbox.sh 192.168.3.0/24 {{ ha_host_port }}
+      ansible.builtin.shell: bash /tmp/find-seedbox.sh {{ seedbox_network }} {{ ha_host_port }}
       register: seedbox_discovery
       failed_when: seedbox_discovery.rc != 0
       changed_when: false
 
-    - name: Show discovery output, line by line
-      ansible.builtin.debug:
-        msg: "{{ item }}"
-      loop: "{{ seedbox_discovery.stdout_lines }}"
-      when: seedbox_discovery.stdout_lines is defined and seedbox_discovery.stdout_lines | length > 0
+    - name: Show discovery output
+      ansible.builtin.command: echo {{ seedbox_discovery.stdout | quote }}
+      changed_when: false
 
     - name: Set seedbox IP from discovery
       ansible.builtin.set_fact:
