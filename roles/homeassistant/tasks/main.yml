@@ -68,6 +68,16 @@
     - "{{ ha_stack_dir }}"
     - "{{ ha_config_dir }}"
 
+- name: Ensure HA backup directory exists on host
+  ansible.builtin.file:
+    path: /mnt/backup/homeassistant
+    state: directory
+    owner: "{{ runtime_uid }}"
+    group: "{{ runtime_gid }}"
+    mode: "0755"
+  become: true
+  when: "'ha_target' in group_names"
+
 - name: Fail fast if we cannot write to ha_stack_dir
   ansible.builtin.file:
     path: "{{ ha_stack_dir }}/.permcheck"
