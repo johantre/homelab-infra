@@ -107,6 +107,24 @@
     - ha_bootstrap_enable | default(false)
     - ha_auth_list.stdout is search('Total users:\s*0')
 
+# CRITICAL: Wait for HA to FULLY initialize ALL components
+# API responding ≠ components initialized!
+# Without this wait, stopping container for seedbox restore during
+# component initialization causes backup integration to enter corrupt state
+- name: Wait for all components to fully initialize (60s grace period)
+  ansible.builtin.pause:
+    seconds: 60
+    prompt: |
+      ⏳ Waiting 60 seconds for HA components to fully initialize...
+      
+      This prevents backup integration corruption when seedbox restore
+      stops the container during component initialization.
+      
+      API ready ≠ components ready. This grace period is CRITICAL.
+  when:
+    - ha_bootstrap_enable | default(false)
+    - ha_auth_list.stdout is search('Total users:\s*0')
+
 - name: Clean up temporary script
   ansible.builtin.shell: |
     sg docker -c 'docker exec {{ ha_container_name }} rm -f /tmp/create_ha_user.py'
