@@ -56,43 +56,6 @@ This copies the default public key to ~/.ssh/id_ed25519.pub file to ~/.ssh/autho
 
     ssh-copy-id ubuntu@<TARGET_IP>
 
-### Backup
-**making backups on target**
-
-    ansible-playbook -i inventories/ha_target_remote.ini site.yml -l ha_target --tags backup -vv
-
-**checking backups on target**
-
-    ansible -i inventories/ha_target_remote.ini ha_target -m shell \
-      -a 'ls -lt "$HOME/homelab/target/ha-stack-ansible/backup" | head -n 3'
-
-**restore backup on target**\
-(ha-config-20251105T165427.tar.gz as example)
-
-    # W/o restore playbook
-    ansible -i inventories/ha_target_remote.ini ha_target \ 
-    -m shell -a \
-    'tar -xzf /home/ubuntu/homelab/target/ha-stack-ansible/backup/ha-config-20251105T165427.tar.gz \
-    -C /home/ubuntu/homelab/target/homeassistant-ansible \
-    --strip-components=1'
-
-    # With restore playbook + specific backup restore
-    ansible-playbook -i inventories/ha_target_remote.ini site.yml -l ha_target \
-    -e env_file=../.env \
-    --tags restore \
-    -e ha_restore_backup=ha-config-20251105T165427.tar.gz
-    
-    # With restore playbook + last backup restore
-    ansible-playbook -i inventories/ha_target_remote.ini site.yml -l ha_target \
-    -e env_file=../.env \
-    --tags restore
-
-    # Skip confirmation prompt (for automation later)
-    ansible-playbook -i inventories/ha_target_remote.ini site.yml -l ha_target \
-    -e env_file=../.env \
-    --tags restore \
-    -e ha_restore_confirm=false
-
 ### HA Update
 **first run for bootstrapping on target**
 

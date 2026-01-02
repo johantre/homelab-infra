@@ -70,7 +70,7 @@
 
 - name: Ensure HA backup directory exists on host
   ansible.builtin.file:
-    path: /mnt/backup/homeassistant
+    path: "{{ ha_native_backup_dir }}"
     state: directory
     owner: "{{ runtime_uid }}"
     group: "{{ runtime_gid }}"
@@ -121,25 +121,6 @@
 # Prepare target packages (Docker/Compose + rsync) before we sync the repo
 - name: Include docker install for target
   ansible.builtin.include_tasks: docker-install.yml
-  when: "'ha_target' in group_names"
-
-# Backup opt-in via tags (propagate tag to included tasks)
-- name: Include backup before updates (opt-in via tags)
-  include_tasks:
-    file: backup.yml
-    apply:
-      tags:
-        - backup
-  tags: [backups, never]
-
-# Restore opt-in via tags (propagate tag to included tasks)
-- name: Include restore (opt-in via tags)
-  include_tasks:
-    file: restore.yml
-    apply:
-      tags:
-        - restore
-  tags: [restore, never]
   when: "'ha_target' in group_names"
 
 - name: Sync repo from controller → target (ha_target group)

@@ -49,7 +49,7 @@
       # Core paths
       - ha_stack_dir is defined
       - ha_config_dir is defined
-      - ha_backups_dir is defined
+      - ha_native_backup_dir is defined
       - base_dir is defined
       - base_home is defined
       # Project config
