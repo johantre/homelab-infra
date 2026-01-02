@@ -132,21 +132,7 @@
         sg docker -c 'docker stop {{ ha_container_name }}'
       changed_when: true
 
-    # Use different sync method depending on connection type
-    # SSH loopback (ubuntu@localhost) can cause file handling issues
-    - name: Sync .storage from seedbox (direct) when connection is local
-      ansible.builtin.shell: |
-        set -e
-        set -o pipefail
-        ssh -o StrictHostKeyChecking=no {{ seedbox_user }}@{{ seedbox_ip }} \
-          "tar -czf - -C {{ seedbox_storage_path }} ." | \
-        tar -xzf - -C {{ ha_config_dir }}/.storage/
-      args:
-        executable: /bin/bash
-      when: ansible_connection == 'local'
-      changed_when: true
-
-    - name: Sync .storage from seedbox (via SSH) when connection is remote
+    - name: Sync .storage from seedbox to target via tar over SSH
       ansible.builtin.shell: |
         set -e
         set -o pipefail
@@ -157,7 +143,6 @@
       args:
         executable: /bin/bash
       delegate_to: localhost
-      when: ansible_connection != 'local'
       changed_when: true
 
     - name: Verify .storage was synced (fail loud if empty)
