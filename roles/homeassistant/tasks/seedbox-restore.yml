@@ -168,14 +168,51 @@
         sg docker -c 'docker start {{ ha_container_name }}'
       changed_when: true
 
+    # SMART POLLING: Wait for HA to fully initialize instead of blind wait
+    - name: Wait for HA API to become responsive
+      ansible.builtin.shell: |
+        sg docker -c 'docker exec {{ ha_container_name }} sh -lc "curl -fsS http://127.0.0.1:8123/ || exit 1"'
+      register: ha_api_ready
+      until: ha_api_ready.rc == 0
+      retries: 30
+      delay: 2
+      failed_when: false
+
+    - name: Wait for HA core to fully start (check logs for "started" message)
+      ansible.builtin.shell: |
+        sg docker -c 'docker logs {{ ha_container_name }} 2>&1' | tail -100 | grep -q "Home Assistant.*started"
+      register: ha_core_started
+      until: ha_core_started.rc == 0
+      retries: 60
+      delay: 2
+      failed_when: false
+
+    - name: Wait for backup integration to be available
+      ansible.builtin.shell: |
+        sg docker -c 'docker exec {{ ha_container_name }} sh -lc "curl -fsS http://127.0.0.1:8123/api/services 2>/dev/null"' | grep -q '"domain":"backup"'
+      register: backup_available
+      until: backup_available.rc == 0
+      retries: 60
+      delay: 2
+      failed_when: false
+
+    - name: Final check - verify no backup errors in recent logs
+      ansible.builtin.shell: |
+        sg docker -c 'docker logs {{ ha_container_name }} 2>&1' | tail -50 | grep -i "backup" | grep -qi "error"
+      register: backup_errors
+      failed_when: backup_errors.rc == 0
+      changed_when: false
+
     - name: Seedbox restore summary
       ansible.builtin.debug:
         msg:
-          - "✅ .storage restored from seedbox!"
-          - "Seedbox: {{ seedbox_user }}@{{ seedbox_ip }}"
-          - "Path: {{ seedbox_storage_path }}"
-          - "Target: {{ ha_config_dir }}/.storage/"
-
+        - "✅ .storage restored from seedbox!"
+        - "Seedbox: {{ seedbox_user }}@{{ seedbox_ip }}"
+        - "Path: {{ seedbox_storage_path }}"
+        - "Target: {{ ha_config_dir }}/.storage/"
+        - "HA initialization: {{ 'API ready ✅' if ha_api_ready.rc == 0 else 'API timeout ⚠️' }}"
+        - "Core started: {{ 'Yes ✅' if ha_core_started.rc == 0 else 'Timeout ⚠️' }}"
+        - "Backup integration: {{ 'Available ✅' if backup_available.rc == 0 else 'Not found ⚠️' }}"
   always:
     - name: Remove seedbox private key (GUARANTEED cleanup)
       ansible.builtin.file:
