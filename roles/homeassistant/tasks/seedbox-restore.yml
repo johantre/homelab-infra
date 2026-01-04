@@ -182,7 +182,7 @@
     # API responding ≠ components initialized!
     # Without this wait, stopping container for seedbox restore during
     # component initialization causes backup integration to enter corrupt state
-    - name: Wait for all components to fully initialize (60s grace period)
+    - name: Wait for all components to fully initialize (100s grace period)
       ansible.builtin.pause:
         seconds: 100
         prompt: |
