@@ -196,6 +196,10 @@
       delay: 2
       failed_when: false
 
+    - name: Show timing info
+      ansible.builtin.debug:
+        msg: "⏱️ Backup integration became available after {{ backup_available.attempts | default(1) }} attempts ({{ (backup_available.attempts | default(1)) * 2 }} seconds)"
+
     - name: Final check - verify no backup errors in recent logs
       ansible.builtin.shell: |
         sg docker -c 'docker logs {{ ha_container_name }} 2>&1' | tail -50 | grep -i "backup" | grep -qi "error"
