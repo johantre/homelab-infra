@@ -168,15 +168,33 @@
         sg docker -c 'docker start {{ ha_container_name }}'
       changed_when: true
 
-    # Deterministic ready check: websocket operational = HA fully initialized
-    - name: Wait for HA websocket to become operational (deterministic ready check)
-      ansible.builtin.shell: |
-        sg docker -c 'docker exec {{ ha_container_name }} sh -c "curl -s --max-time 2 http://localhost:{{ ha_host_port }}/api/websocket 2>&1"' | grep -q "WebSocket"
-      register: ws_ready
-      until: ws_ready.rc == 0
-      retries: 60
-      delay: 2
-      changed_when: false
+#    # Deterministic ready check: websocket operational = HA fully initialized
+#    - name: Wait for HA websocket to become operational (deterministic ready check)
+#      ansible.builtin.shell: |
+#        sg docker -c 'docker exec {{ ha_container_name }} sh -c "curl -s --max-time 2 http://localhost:{{ ha_host_port }}/api/websocket 2>&1"' | grep -q "WebSocket"
+#      register: ws_ready
+#      until: ws_ready.rc == 0
+#      retries: 60
+#      delay: 2
+#      changed_when: false
+
+    # CRITICAL: Wait for HA to FULLY initialize ALL components
+    # API responding ≠ components initialized!
+    # Without this wait, stopping container for seedbox restore during
+    # component initialization causes backup integration to enter corrupt state
+    - name: Wait for all components to fully initialize (60s grace period)
+      ansible.builtin.pause:
+        seconds: 100
+        prompt: |
+          ⏳ Waiting 100 seconds for HA components to fully initialize...
+          
+          This prevents backup integration corruption when seedbox restore
+          stops the container during component initialization.
+          
+          API ready ≠ components ready. This grace period is CRITICAL.
+      when:
+        - ha_bootstrap_enable | default(false)
+        - ha_auth_list.stdout is search('Total users:\s*0')
 
     - name: Seedbox restore summary
       ansible.builtin.debug:
