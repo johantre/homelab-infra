@@ -132,26 +132,27 @@
         sg docker -c 'docker stop {{ ha_container_name }}'
       changed_when: true
 
-    - name: Sync .storage from seedbox to target via tar over SSH
+    - name: ACTUAL SYNC - Transfer data from Seedbox to Target
       ansible.builtin.shell: |
         set -e
-        set -o pipefail
+        # 1. Pak in op Seedbox -> 2. Pipe door laptop -> 3. Pak uit op Target Server
         ssh -o StrictHostKeyChecking=no {{ seedbox_user }}@{{ seedbox_ip }} \
-          "tar -czf - --exclude='./backup' -C {{ seedbox_storage_path }} ." | \
+          "tar -czf - --exclude='./hassio' --exclude='./backup' -C {{ seedbox_storage_path }} ." | \
         ssh -o StrictHostKeyChecking=no {{ ansible_user }}@{{ ansible_host }} \
           "tar -xzf - -C {{ ha_config_dir }}/.storage/"
-      args:
-        executable: /bin/bash
       delegate_to: localhost
       changed_when: true
 
-    - name: Remove the backup integration entry from core.config_entries via SSH
-      ansible.builtin.shell: |
-        ssh -o StrictHostKeyChecking=no {{ ansible_user }}@{{ ansible_host }} \
-        "sed -i 's/{\"created_at\":[^}]*\"domain\":\"backup\"[^}]*},//g' {{ ha_config_dir }}/.storage/core.config_entries"
+    - name: Surgical cleanup via local Python script
+      ansible.builtin.script: "clean_ha.py {{ ha_config_dir }}"
       args:
-        executable: /bin/bash
-      delegate_to: localhost
+        executable: python3
+      register: python_cleanup_output
+      changed_when: "'Successfully cleaned' in python_cleanup_output.stdout"
+
+    - name: Show Python Cleanup Result
+      ansible.builtin.debug:
+        msg: "{{ python_cleanup_output.stdout_lines }}"
 
     - name: Verify .storage was synced (fail loud if empty)
       ansible.builtin.shell: |
@@ -175,34 +176,6 @@
       ansible.builtin.shell: |
         sg docker -c 'docker start {{ ha_container_name }}'
       changed_when: true
-
-#    # Deterministic ready check: websocket operational = HA fully initialized
-#    - name: Wait for HA websocket to become operational (deterministic ready check)
-#      ansible.builtin.shell: |
-#        sg docker -c 'docker exec {{ ha_container_name }} sh -c "curl -s --max-time 2 http://localhost:{{ ha_host_port }}/api/websocket 2>&1"' | grep -q "WebSocket"
-#      register: ws_ready
-#      until: ws_ready.rc == 0
-#      retries: 60
-#      delay: 2
-#      changed_when: false
-
-    # CRITICAL: Wait for HA to FULLY initialize ALL components
-    # API responding ≠ components initialized!
-    # Without this wait, stopping container for seedbox restore during
-    # component initialization causes backup integration to enter corrupt state
-#    - name: Wait for all components to fully initialize (120s grace period)
-#      ansible.builtin.pause:
-#        seconds: 120
-#        prompt: |
-#          ⏳ Waiting 120 seconds for HA components to fully initialize...
-#
-#          This prevents backup integration corruption when seedbox restore
-#          stops the container during component initialization.
-#
-#          API ready ≠ components ready. This grace period is CRITICAL.
-#      when:
-#        - ha_bootstrap_enable | default(false)
-#        - ha_auth_list.stdout is search('Total users:\s*0')
 
     - name: Seedbox restore summary
       ansible.builtin.debug:
