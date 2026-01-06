@@ -132,6 +132,14 @@
         sg docker -c 'docker stop {{ ha_container_name }}'
       changed_when: true
 
+    - name: Ensure .storage directory exists before seedbox restore
+      ansible.builtin.file:
+        path: "{{ ha_config_dir }}/.storage"
+        state: directory
+        owner: "{{ runtime_uid }}"
+        group: "{{ runtime_gid }}"
+        mode: '0755'
+
     - name: ACTUAL SYNC - Transfer data from Seedbox to Target
       ansible.builtin.shell: |
         set -e
