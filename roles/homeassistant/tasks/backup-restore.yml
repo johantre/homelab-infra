@@ -64,6 +64,23 @@
         msg: "❌ homeassistant.tar.gz not found in backup!"
       when: not ha_tar_gz_stat.stat.exists
 
+    - name: DEBUG - Show ha_backup_encrypt_key value
+      ansible.builtin.debug:
+        msg: "Key: '{{ ha_backup_encrypt_key }}' | Length: {{ ha_backup_encrypt_key | length }}"
+      # no_log: false  # Tijdelijk voor debug!
+
+    - name: DEBUG - Test HASSIO_PASSWORD in shell
+      ansible.builtin.shell: |
+        echo "Length: ${#HASSIO_PASSWORD}"
+        echo "Value: '${HASSIO_PASSWORD}'"
+      environment:
+        HASSIO_PASSWORD: "{{ ha_backup_encrypt_key }}"
+      register: debug_password
+
+    - name: Show debug output
+      ansible.builtin.debug:
+        var: debug_password.stdout_lines
+
     - name: Decrypt and extract homeassistant.tar.gz with hassio-tar.sh
       ansible.builtin.shell: |
         cd /tmp/ha-backup-restore
