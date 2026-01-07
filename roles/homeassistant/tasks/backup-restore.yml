@@ -72,7 +72,7 @@
       register: decrypt_extract
       failed_when: decrypt_extract.rc != 0
       changed_when: true
-      no_log: true
+      no_log: false
 
     - name: Check for data directory
       ansible.builtin.stat:
