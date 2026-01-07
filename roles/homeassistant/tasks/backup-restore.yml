@@ -77,6 +77,12 @@
       ansible.builtin.debug:
         var: debug_files.stdout_lines
 
+    - name: DEBUG - Check if ha_backup_encrypt_key matches expected
+      ansible.builtin.debug:
+        msg:
+          - "Key length: {{ ha_backup_encrypt_key | length }}"
+          - "Key value: {{ ha_backup_encrypt_key }}"
+
     - name: Decrypt and extract homeassistant.tar.gz with hassio-tar.sh
       ansible.builtin.shell: |
         cd /tmp/ha-backup-restore
