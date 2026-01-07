@@ -1,37 +1,37 @@
 # 🚨 Disaster Recovery Procedure
 
-**Complete step-by-step guide voor het recoveren van je homelab na hardware failure.**
+**Complete step-by-step guide for recovering your homelab after hardware failure.**
 
 ---
 
 ## 📋 Scenarios
 
-Dit document behandelt de volgende disaster scenarios:
+This document covers the following disaster scenarios:
 
-| Scenario | Target Device Status | Recovery Method |
-|----------|---------------------|-----------------|
-| **A** | Volledig defect | USB install + GitHub Actions |
-| **B** | Werkt nog, .storage corrupt | Ansible direct recovery |
-| **C** | SD card/disk kapot | USB install + GitHub Actions |
-| **D** | Complete fresh start | USB install + GitHub Actions + Bootstrap |
+| Scenario | Target Device Status            | Recovery Method |
+|----------|---------------------------------|-----------------|
+| **A** | Completely defect               | USB install + GitHub Actions |
+| **B** | Still working, .storage corrupt | Ansible direct recovery |
+| **C** | SD card/disk broken             | USB install + GitHub Actions |
+| **D** | Complete fresh start            | USB install + GitHub Actions + Bootstrap |
 
 ---
 
 ## 🎯 Scenario A: Complete Hardware Failure
 
-**Situatie:** Je laptop/Raspberry Pi is volledig kapot, je hebt nieuwe hardware.
+**Situatie:** Your laptop/Raspberry Pi completely ruined, you got new hardware.
 
 ### Prerequisites Checklist
 
-Zorg dat je het volgende hebt:
+Make sure you have the following:
 
-- [ ] ✅ Nieuwe target hardware (laptop/Pi/server)
-- [ ] ✅ 2x USB sticks (8GB+ en 1GB+)
-- [ ] ✅ Controller node (andere laptop met Ansible)
-- [ ] ✅ GitHub repository toegang
-- [ ] ✅ `.env` file met secrets (backup hiervan!)
-- [ ] ✅ Netwerk toegang tot seedbox (optioneel)
-- [ ] ✅ Local backup files (optioneel, in `/mnt/backup/homeassistant/`)
+- [ ] ✅ New target hardware (laptop/Pi/server)
+- [ ] ✅ 2x USB sticks (8GB+ and 1GB+)
+- [ ] ✅ Controller node (other laptop with Ansible)
+- [ ] ✅ GitHub repository access
+- [ ] ✅ `.env` file with secrets (backup of this!)
+- [ ] ✅ Network access to seedbox (optional)
+- [ ] ✅ Local backup encrypted files (optional, in `/mnt/backup/homeassistant/`)
 
 ### Phase 1: USB Preparation (10 minutes)
 
@@ -45,7 +45,7 @@ graph LR
     style D fill:#4caf50
 ```
 
-**Op je controller node:**
+**On your controller node:**
 
 ```bash
 cd ~/homelab/infra/boot
@@ -244,7 +244,7 @@ sequenceDiagram
 #### 🟠 Path 2: Seedbox Restore (Production Clone)
 
 **Prerequisites:**
-- Seedbox/production HA running on network
+- Seedbox/production HA running on network (can be supervised version of HA)
 - Network connectivity: `192.168.3.0/24` (configurable)
 - SSH access to seedbox
 
@@ -463,17 +463,17 @@ SSH_PRIV_KEY_B64=xxx
 
 ## ⏱️ Expected Duration
 
-| Phase | Duration | Hands-On Time |
-|-------|----------|---------------|
-| USB Preparation | 10 min | 10 min |
-| Ubuntu Installation | 20 min | 5 min (mostly waiting) |
-| Setup Script | 5 min | 2 min |
-| GitHub Actions Deploy | 15-30 min | 1 min (just trigger) |
+| Phase | Duration      | Hands-On Time |
+|-------|---------------|---------------|
+| USB Preparation | 10 min        | 10 min |
+| Ubuntu Installation | 20 min        | 5 min (mostly waiting) |
+| Setup Script | 5 min         | 2 min |
+| GitHub Actions Deploy | 2-3 min      | 1 min (just trigger) |
 | **Total** | **50-65 min** | **~18 min active** |
 
 **Most time is waiting for:**
 - Ubuntu installation (~10 min)
-- Ansible deployment (~15-30 min)
+- Ansible deployment (~2-3 min)
 
 **Actual hands-on work:** ~18 minutes! 🎯
 
