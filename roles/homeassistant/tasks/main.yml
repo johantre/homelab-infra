@@ -254,13 +254,90 @@
   ansible.builtin.debug:
     var: compose_up
 
-# Bootstrap new user
-- import_tasks: bootstrap-auth.yml
-  when: ha_bootstrap_enable | default(true)
+# ============================================================================
+# OPTIONAL: FRESH INSTALL (clean .storage before disaster recovery)
+# ============================================================================
+# Use -e fresh_install=true to wipe .storage/ before any restore/bootstrap
+# This ensures truly fresh state regardless of restore method:
+#   - Backup restore → clean slate + backup data
+#   - Seedbox restore → clean slate + seedbox data
+#   - Bootstrap → clean slate + new user only
+# ============================================================================
+
+- name: Clean .storage for fresh install (opt-in via -e fresh_install=true)
+  ansible.builtin.file:
+    path: "{{ ha_config_dir }}/.storage"
+    state: absent
+  become: true
+  when:
+    - "'ha_target' in group_names"
+    - fresh_install | default(false) | bool
+
+- name: Show fresh install notice
+  ansible.builtin.debug:
+    msg: "🆕 Fresh install mode - .storage/ cleaned, disaster recovery will restore to clean state"
+  when:
+    - "'ha_target' in group_names"
+    - fresh_install | default(false) | bool
+
+# ============================================================================
+# DISASTER RECOVERY LOGIC
+# Priority: Local backup > Seedbox > Bootstrap (fresh install)
+# ============================================================================
+
+# Check for local backups FIRST
+- name: Check for backups in native backup dir
+  ansible.builtin.find:
+    paths: "{{ ha_native_backup_dir }}"
+    patterns: "*.tar"
+  register: available_backups
+  when: "'ha_target' in group_names"
+
+# Set flag to track if restore was successful
+- name: Initialize restore status
+  ansible.builtin.set_fact:
+    restore_completed: false
+  when: "'ha_target' in group_names"
+
+# PATH 1: Local backup found → restore from backup (contains auth)
+- name: Restore from local backup
+  block:
+    - include_tasks: backup-restore.yml
+    - name: Mark restore as completed
+      ansible.builtin.set_fact:
+        restore_completed: true
+  rescue:
+    - name: Local backup restore failed, will try seedbox
+      ansible.builtin.debug:
+        msg: "⚠️ Local backup restore failed, attempting seedbox restore"
+  when:
+    - "'ha_target' in group_names"
+    - available_backups.matched > 0
+
+# PATH 2: No local backup OR local backup failed → try seedbox
+- name: Restore from seedbox (fallback)
+  block:
+    - include_tasks: seedbox-restore.yml
+    # CRITICAL: Only mark as completed if seedbox was actually found and restored
+    - name: Mark restore as completed
+      ansible.builtin.set_fact:
+        restore_completed: true
+      when: seedbox_found | default(false)
+  when:
+    - "'ha_target' in group_names"
+    - not restore_completed | default(false)
+
+# PATH 3: All restores failed → bootstrap fresh install (create first user)
+- name: Bootstrap authentication for fresh install
+  import_tasks: bootstrap-auth.yml
+  when:
+    - "'ha_target' in group_names"
+    - ha_bootstrap_enable | default(true)
+    - not restore_completed | default(false)
   tags: [ha_bootstrap]
 
-# Seedbox restore opt-in via tags (runs AFTER full deployment)
-- name: Include seedbox restore (opt-in via tags)
-  include_tasks:
-    file: seedbox-restore.yml
+# Summary of what happened
+- name: Disaster recovery summary
+  ansible.builtin.debug:
+    msg: "{{ '✅ Restore completed successfully' if restore_completed | default(false) else '🆕 Fresh install - bootstrap ran' }}"
   when: "'ha_target' in group_names"

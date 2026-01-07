@@ -40,7 +40,7 @@
     sg docker -c 'docker compose -p {{ ha_project | quote }} -f {{ ha_stack_dir }}/docker-compose.yml pull'
   args:
     chdir: "{{ ha_stack_dir }}"
-  environment: "{{ compose_global_env | mandatory('compose_global_env undefined — env_boot skipped or failed') }}"
+  environment: "{{ compose_global_env | mandatory('compose_global_env undefined – env_boot skipped or failed') }}"
   register: ha_pull
   changed_when: (ha_pull.stdout | default('') ~ ha_pull.stderr | default('')) is search('Downloaded')
   tags: [ ha_update, containers_update ]
@@ -51,7 +51,7 @@
     sg docker -c 'docker compose -p {{ ha_project | quote }} -f {{ ha_stack_dir }}/docker-compose.yml up -d'
   args:
     chdir: "{{ ha_stack_dir }}"
-  environment: "{{ compose_global_env | mandatory('compose_global_env undefined — env_boot skipped or failed') }}"
+  environment: "{{ compose_global_env | mandatory('compose_global_env undefined – env_boot skipped or failed') }}"
   register: ha_up
   changed_when: (ha_up.stdout | default('') ~ ha_up.stderr | default('')) is search('(?i)(recreated|recreating|created|creating|starting)')
   tags: [ha_update, containers_update]

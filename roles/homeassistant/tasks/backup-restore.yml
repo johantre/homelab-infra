@@ -1,0 +1,171 @@
+---
+# Backup restore - decrypt and restore HA backup from native backup directory
+# Uses hassio-tar.sh for proper SecureTar decryption
+# CRITICAL: Uses 'data/.' instead of 'data/*' to copy hidden directories like .storage
+
+- name: Install backup restore dependencies
+  ansible.builtin.apt:
+    name:
+      - curl
+    state: present
+    update_cache: true
+  become: true
+
+# Block with guaranteed cleanup
+- block:
+    - name: Find all backups in native backup directory
+      ansible.builtin.find:
+        paths: "{{ ha_native_backup_dir }}"
+        patterns: "*.tar"
+        file_type: file
+      register: backup_files
+
+    - name: Fail if no backups found
+      ansible.builtin.fail:
+        msg: "❌ No backup files found in {{ ha_native_backup_dir }}"
+      when: backup_files.matched == 0
+
+    - name: Sort backups by modification time and select newest
+      ansible.builtin.set_fact:
+        latest_backup: "{{ backup_files.files | sort(attribute='mtime', reverse=True) | first }}"
+
+    - name: Show selected backup
+      ansible.builtin.debug:
+        msg:
+          - "📦 Selected backup: {{ latest_backup.path | basename }}"
+          - "📅 Modified: {{ latest_backup.mtime }}"
+          - "💾 Size: {{ (latest_backup.size / 1024 / 1024) | round(2) }} MB"
+
+    - name: Create temporary restore directory
+      ansible.builtin.file:
+        path: /tmp/ha-backup-restore
+        state: directory
+        mode: '0700'
+
+    - name: Copy hassio-tar.sh to target
+      ansible.builtin.copy:
+        src: hassio-tar.sh
+        dest: /tmp/ha-backup-restore/hassio-tar.sh
+        mode: '0755'
+
+    - name: Extract outer tar from backup
+      ansible.builtin.unarchive:
+        src: "{{ latest_backup.path }}"
+        dest: /tmp/ha-backup-restore/
+        remote_src: yes
+
+    - name: Check if homeassistant.tar.gz exists
+      ansible.builtin.stat:
+        path: /tmp/ha-backup-restore/homeassistant.tar.gz
+      register: ha_tar_gz_stat
+
+    - name: Fail if homeassistant.tar.gz missing
+      ansible.builtin.fail:
+        msg: "❌ homeassistant.tar.gz not found in backup!"
+      when: not ha_tar_gz_stat.stat.exists
+
+    - name: Decrypt and extract homeassistant.tar.gz with hassio-tar.sh
+      ansible.builtin.shell: |
+        cd /tmp/ha-backup-restore
+        export HASSIO_PASSWORD="{{ ha_backup_encrypt_key }}"
+        ./hassio-tar.sh homeassistant.tar.gz | tar -x
+      register: decrypt_extract
+      failed_when: decrypt_extract.rc != 0
+      changed_when: true
+      no_log: true
+
+    - name: Check for data directory
+      ansible.builtin.stat:
+        path: /tmp/ha-backup-restore/data
+      register: data_dir_stat
+
+    - name: Fail if data directory missing
+      ansible.builtin.fail:
+        msg: "❌ data/ directory not found after extraction!"
+      when: not data_dir_stat.stat.exists
+
+    - name: Verify data directory is not empty
+      ansible.builtin.shell: |
+        SIZE=$(du -sb /tmp/ha-backup-restore/data | cut -f1)
+        if [ "$SIZE" -lt 100000 ]; then
+          echo "ERROR: Restored data is too small ($SIZE bytes)"
+          exit 1
+        fi
+        echo "✅ Data directory size: $SIZE bytes"
+      register: data_size_check
+      failed_when: data_size_check.rc != 0
+      changed_when: false
+
+    - name: Show data directory size
+      ansible.builtin.debug:
+        msg: "{{ data_size_check.stdout }}"
+
+    - name: Stop HA container before restore
+      ansible.builtin.shell: |
+        sg docker -c 'docker stop {{ ha_container_name }}'
+      changed_when: true
+
+    - name: Create safety backup of current config
+      ansible.builtin.shell: |
+        TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+        sudo tar -czf "/tmp/ha-config-backup-${TIMESTAMP}.tar.gz" \
+          -C "{{ ha_config_dir }}" .
+        echo "Safety backup: /tmp/ha-config-backup-${TIMESTAMP}.tar.gz"
+      register: safety_backup
+      changed_when: true
+
+    - name: Show safety backup location
+      ansible.builtin.debug:
+        msg: "{{ safety_backup.stdout }}"
+
+    - name: Clear existing config directory (except backups)
+      ansible.builtin.shell: |
+        find "{{ ha_config_dir }}" -mindepth 1 -maxdepth 1 ! -name 'backups' -exec rm -rf {} +
+      changed_when: true
+
+    # CRITICAL FIX: Use 'data/.' instead of 'data/*' to copy hidden directories
+    # The glob '*' does NOT match directories starting with '.' like .storage
+    - name: Restore data from backup to config directory
+      ansible.builtin.shell: |
+        cp -r /tmp/ha-backup-restore/data/. "{{ ha_config_dir }}/"
+      register: copy_output
+      changed_when: true
+
+    - name: Fix ownership of restored config
+      ansible.builtin.file:
+        path: "{{ ha_config_dir }}"
+        owner: "{{ runtime_uid }}"
+        group: "{{ runtime_gid }}"
+        recurse: yes
+        state: directory
+      become: true
+
+    - name: Start HA container after restore
+      ansible.builtin.shell: |
+        sg docker -c 'docker start {{ ha_container_name }}'
+      changed_when: true
+
+    - name: Wait for HA to come back up
+      ansible.builtin.shell: |
+        sg docker -c 'docker exec {{ ha_container_name }} sh -lc "curl -fsS http://127.0.0.1:{{ ha_host_port }}/ || exit 1"'
+      register: ha_ping
+      retries: 30
+      delay: 2
+      until: ha_ping.rc == 0
+      changed_when: false
+
+    - name: Backup restore summary
+      ansible.builtin.debug:
+        msg:
+          - "✅ Backup restored successfully!"
+          - "📦 Source: {{ latest_backup.path | basename }}"
+          - "📂 Target: {{ ha_config_dir }}"
+          - "🔐 Decrypted with HA_BACKUP_ENCRYPT_KEY + hassio-tar.sh"
+          - "✅ HA container restarted and responding"
+
+  always:
+    - name: Remove temporary restore directory (GUARANTEED cleanup)
+      ansible.builtin.file:
+        path: /tmp/ha-backup-restore
+        state: absent
+      failed_when: false

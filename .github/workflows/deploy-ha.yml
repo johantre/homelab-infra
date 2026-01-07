@@ -167,6 +167,7 @@ jobs:
           CF_TUNNEL_TOKEN: ${{ secrets.CF_TUNNEL_TOKEN }}
           HA_USER_USERNAME: ${{ secrets.HA_USER_USERNAME }}
           HA_USER_PASSWORD: ${{ secrets.HA_USER_PASSWORD }}
+          HA_BACKUP_ENCRYPT_KEY: ${{ secrets.HA_BACKUP_ENCRYPT_KEY }}
         run: |
           echo "🚀 Starting Home Assistant deployment..."
           

@@ -25,6 +25,7 @@ ha_user_password: "{{ lookup('env', 'HA_USER_PASSWORD') }}"
 ha_bootstrap_enable: true
 ha_container_name: homeassistant_ansible
 ha_seedbox_network: "192.168.3.0/24"
+ha_backup_encrypt_key: "{{ lookup('env', 'HA_BACKUP_ENCRYPT_KEY') }}"
 ha_network_mode: bridge
 ha_host_port: 8123
 

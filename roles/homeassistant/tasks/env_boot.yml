@@ -6,6 +6,7 @@
     github_username: "{{ github_username | default(lookup('ini', 'GITHUB_USERNAME file=' + env_file + ' type=properties'), true) }}"
     github_pat:       "{{ github_pat       | default(lookup('ini', 'GITHUB_PAT file=' + env_file + ' type=properties'), true) }}"
     cf_tunnel_token:  "{{ cf_tunnel_token  | default(lookup('ini', 'CF_TUNNEL_TOKEN file=' + env_file + ' type=properties'), true) }}"
+    ha_backup_encrypt_key: "{{ ha_backup_encrypt_key | default(lookup('ini', 'HA_BACKUP_ENCRYPT_KEY file=' + env_file + ' type=properties'), true) }}"
   when: env_file is defined
 
 ## 2) No env_file given, get from OS-env
@@ -16,6 +17,7 @@
     github_pat:       "{{ github_pat       | default(lookup('env','GITHUB_PAT'), true) }}"
     cf_tunnel_token:  "{{ cf_tunnel_token  | default(lookup('env','CF_TUNNEL_TOKEN'), true) }}"
     ssh_priv_key_b64: "{{ ssh_priv_key_b64 | default(lookup('env','SSH_PRIV_KEY_B64'), true) }}"
+    ha_backup_encrypt_key: "{{ ha_backup_encrypt_key | default(lookup('env','HA_BACKUP_ENCRYPT_KEY'), true) }}"
   when: env_file is not defined
 
 # Loud fail – explicit & clear
@@ -42,6 +44,13 @@
       - ssh_priv_key_b64 | length > 0
     fail_msg: "❌ Missing SSH_PRIV_KEY_B64 for self-hosted runner deployment. ❌"
   when: ansible_connection == 'local'
+
+- name: Assert HA_BACKUP_ENCRYPT_KEY present (always required)
+  no_log: true
+  ansible.builtin.assert:
+    that:
+      - ha_backup_encrypt_key | length > 0
+    fail_msg: "❌ Missing HA_BACKUP_ENCRYPT_KEY (required for disaster recovery). ❌"
 
 - name: Validate all critical variables are defined
   ansible.builtin.assert:

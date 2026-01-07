@@ -28,64 +28,43 @@
         mode: '0600'
       when: ansible_connection == 'local'
 
-    - name: Debug - Check deployed key exists
-      ansible.builtin.stat:
-        path: "{{ ansible_env.HOME }}/.ssh/id_ed25519_seedbox_priv"
-      register: key_stat
-      when: ansible_connection == 'local'
-
-    - name: Debug - Show key info
-      ansible.builtin.debug:
-        msg: "Key exists: {{ key_stat.stat.exists | default('N/A') }}, Mode: {{ key_stat.stat.mode | default('N/A') }}"
-      when: ansible_connection == 'local'
-
-    - name: Debug - Validate key format
-      ansible.builtin.shell: |
-        ssh-keygen -l -f ~/.ssh/id_ed25519_seedbox_priv 2>&1
-      register: key_validate
-      when: ansible_connection == 'local'
-      failed_when: false
-
-    - name: Debug - Show validation result
-      ansible.builtin.debug:
-        msg: "Key validation: {{ key_validate.stdout }}"
-      when: ansible_connection == 'local'
-
-    - name: Debug - Test SSH with deployed key
-      ansible.builtin.shell: |
-        ssh -i ~/.ssh/id_ed25519_seedbox_priv -o StrictHostKeyChecking=no -o ConnectTimeout=2 root@192.168.3.8 "echo SUCCESS"
-      register: ssh_test
-      when: ansible_connection == 'local'
-      failed_when: false
-
-    - name: Debug - Show SSH test result
-      ansible.builtin.debug:
-        msg: "SSH test RC: {{ ssh_test.rc | default('N/A') }}, Output: {{ ssh_test.stdout | default('N/A') }}, Error: {{ ssh_test.stderr | default('N/A') }}"
-      when: ansible_connection == 'local'
-
     - name: Copy seedbox discovery script to target
       ansible.builtin.copy:
         src: roles/homeassistant/files/find-seedbox.sh
         dest: /tmp/find-seedbox.sh
         mode: '0755'
 
-    - name: Discover seedbox on network
-      ansible.builtin.shell: bash /tmp/find-seedbox.sh {{ ha_seedbox_network }} {{ ha_host_port }}
+    - name: Discover seedbox on network (exclude self)
+      ansible.builtin.shell: |
+        bash /tmp/find-seedbox.sh {{ ha_seedbox_network }} {{ ha_host_port }} {{ ansible_default_ipv4.address }}
       register: seedbox_discovery
-      failed_when: seedbox_discovery.rc != 0
+      failed_when: false
       changed_when: false
 
+    # Set flag based on discovery result
+    - name: Set seedbox found flag
+      ansible.builtin.set_fact:
+        seedbox_found: "{{ seedbox_discovery.rc == 0 }}"
+
+    - name: Show seedbox not found message
+      ansible.builtin.debug:
+        msg: "⚠️ No seedbox found on network - skipping seedbox restore"
+      when: not seedbox_found
+
     - name: Show discovery output
-      ansible.builtin.command: echo {{ seedbox_discovery.stdout | quote }}
-      changed_when: false
+      ansible.builtin.debug:
+        msg: "{{ seedbox_discovery.stdout_lines }}"
+      when: seedbox_found
 
     - name: Set seedbox IP from discovery
       ansible.builtin.set_fact:
         seedbox_ip: "{{ seedbox_discovery.stdout_lines | last }}"
+      when: seedbox_found
 
     - name: Show discovered seedbox
       ansible.builtin.debug:
         msg: "Discovered seedbox at: {{ seedbox_ip }}"
+      when: seedbox_found
 
     - name: Determine SSH user for seedbox
       ansible.builtin.shell: |
@@ -99,10 +78,12 @@
       register: seedbox_user_check
       failed_when: seedbox_user_check.rc != 0
       changed_when: false
+      when: seedbox_found
 
     - name: Set seedbox SSH user
       ansible.builtin.set_fact:
         seedbox_user: "{{ seedbox_user_check.stdout }}"
+      when: seedbox_found
 
     - name: Find .storage path on seedbox
       ansible.builtin.shell: |
@@ -122,15 +103,18 @@
       register: seedbox_storage_search
       failed_when: seedbox_storage_search.rc != 0
       changed_when: false
+      when: seedbox_found
 
     - name: Set storage path
       ansible.builtin.set_fact:
         seedbox_storage_path: "{{ seedbox_storage_search.stdout }}"
+      when: seedbox_found
 
     - name: Stop HA container before .storage sync
       ansible.builtin.shell: |
         sg docker -c 'docker stop {{ ha_container_name }}'
       changed_when: true
+      when: seedbox_found
 
     - name: Ensure .storage directory exists before seedbox restore
       ansible.builtin.file:
@@ -139,6 +123,7 @@
         owner: "{{ runtime_uid }}"
         group: "{{ runtime_gid }}"
         mode: '0755'
+      when: seedbox_found
 
     - name: ACTUAL SYNC - Transfer data from Seedbox to Target
       ansible.builtin.shell: |
@@ -150,6 +135,7 @@
           "tar -xzf - -C {{ ha_config_dir }}/.storage/"
       delegate_to: localhost
       changed_when: true
+      when: seedbox_found
 
     - name: Surgical cleanup via local Python script
       ansible.builtin.script: "clean_ha.py {{ ha_config_dir }}"
@@ -157,10 +143,12 @@
         executable: python3
       register: python_cleanup_output
       changed_when: "'Successfully cleaned' in python_cleanup_output.stdout"
+      when: seedbox_found
 
     - name: Show Python Cleanup Result
       ansible.builtin.debug:
         msg: "{{ python_cleanup_output.stdout_lines }}"
+      when: seedbox_found
 
     - name: Verify .storage was synced (fail loud if empty)
       ansible.builtin.shell: |
@@ -171,6 +159,7 @@
         fi
         echo "Success: $SIZE bytes in .storage"
       changed_when: false
+      when: seedbox_found
 
     - name: Fix .storage ownership
       ansible.builtin.file:
@@ -179,11 +168,13 @@
         group: "{{ runtime_gid }}"
         recurse: yes
         state: directory
+      when: seedbox_found
 
     - name: Start HA container after .storage sync
       ansible.builtin.shell: |
         sg docker -c 'docker start {{ ha_container_name }}'
       changed_when: true
+      when: seedbox_found
 
     - name: Seedbox restore summary
       ansible.builtin.debug:
@@ -192,7 +183,8 @@
           - "Seedbox: {{ seedbox_user }}@{{ seedbox_ip }}"
           - "Path: {{ seedbox_storage_path }}"
           - "Target: {{ ha_config_dir }}/.storage/"
-          - "HA websocket ready after: {{ (ws_ready.attempts | default(1)) * 2 }} seconds"
+      when: seedbox_found
+
   always:
     - name: Remove seedbox private key (GUARANTEED cleanup)
       ansible.builtin.file:
