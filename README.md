@@ -2,6 +2,7 @@
 
 Ansible-powered infrastructure-as-code for deploying and managing home lab services. Currently supports Home Assistant with disaster recovery, with plans to expand to additional devices and services.
 
+<a name="table-of-contents"></a>
 ## 📋 Table of Contents
 
 - [Architecture Overview](#architecture-overview)
@@ -18,6 +19,7 @@ Ansible-powered infrastructure-as-code for deploying and managing home lab servi
 
 ---
 
+<a name="architecture-overview"></a>
 ## 🏗️ Architecture Overview
 
 ```mermaid
@@ -106,6 +108,7 @@ graph LR
 
 ---
 
+<a name="conventions"></a>
 ## 📖 Conventions
 
 ### Node Types
@@ -140,6 +143,7 @@ graph LR
 
 ---
 
+<a name="getting-started"></a>
 ## 🚀 Getting Started
 
 ### Prerequisites
@@ -167,6 +171,7 @@ ansible-playbook -i inventories/ha_target_remote.ini site.yml -l ha_target -e en
 
 ---
 
+<a name="usb-setup-tool"></a>
 ## 💾 USB Setup Tool
 
 The `create-two-usb-setup.sh` script creates a complete disaster recovery kit on two USB drives.
@@ -276,6 +281,7 @@ sudo ./create-two-usb-setup.sh --test-mode
 
 ---
 
+<a name="dependencies"></a>
 ## 🔗 Dependencies
 
 ### Hard Dependencies
@@ -351,6 +357,7 @@ ssh ubuntu@<TARGET_IP>
 
 ---
 
+<a name="deployment-methods"></a>
 ## 🚀 Deployment Methods
 
 ### Method 1: Direct Ansible (from Controller)
@@ -397,6 +404,7 @@ graph LR
 
 ---
 
+<a name="common-operations"></a>
 ## 🛠️ Common Operations
 
 ### Container Management
@@ -478,6 +486,7 @@ ansible-playbook -i inventories/ha_target_remote.ini site.yml -l ha_target \
 
 ---
 
+<a name="disaster-recovery"></a>
 ## 🔄 Disaster Recovery
 
 ### Three-Tier Recovery System
@@ -545,6 +554,7 @@ ansible-playbook -i inventories/ha_target_remote.ini site.yml \
 
 ---
 
+<a name="self-hosted-runners"></a>
 ## 🤖 Self-Hosted Runners
 
 ### Architecture
@@ -610,6 +620,7 @@ sudo ./svc.sh restart
 
 ---
 
+<a name="service-architecture"></a>
 ## 🐳 Service Architecture
 
 ### Docker Compose Stack
@@ -718,6 +729,7 @@ graph LR
 
 ---
 
+<a name="troubleshooting"></a>
 ## 🔧 Troubleshooting
 
 ### Common Issues
@@ -833,6 +845,7 @@ ansible-playbook -i inventories/ha_target_remote.ini site.yml -l ha_target --che
 
 ---
 
+<a name="future-expansion"></a>
 ## 📚 Future Expansion
 
 This infrastructure is designed to support multiple devices and services:
@@ -904,16 +917,19 @@ graph TB
 
 ---
 
+<a name="contributing"></a>
 ## 🤝 Contributing
 
 This is a personal homelab project, but suggestions and improvements are welcome via issues or pull requests!
 
+<a name="license"></a>
 ## 📝 License
 
 Private repository - all rights reserved.
 
 ---
 
+<a name="quick-links"></a>
 ## 🔗 Quick Links
 
 - [Ansible Documentation](https://docs.ansible.com/)
