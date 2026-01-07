@@ -163,9 +163,9 @@
           - "🔐 Decrypted with HA_BACKUP_ENCRYPT_KEY + hassio-tar.sh"
           - "✅ HA container restarted and responding"
 
-  always:
-    - name: Remove temporary restore directory (GUARANTEED cleanup)
-      ansible.builtin.file:
-        path: /tmp/ha-backup-restore
-        state: absent
-      failed_when: false
+#  always:
+#    - name: Remove temporary restore directory (GUARANTEED cleanup)
+#      ansible.builtin.file:
+#        path: /tmp/ha-backup-restore
+#        state: absent
+#      failed_when: false
