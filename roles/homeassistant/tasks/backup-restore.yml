@@ -64,6 +64,19 @@
         msg: "❌ homeassistant.tar.gz not found in backup!"
       when: not ha_tar_gz_stat.stat.exists
 
+    - name: DEBUG - Check extracted file format
+      ansible.builtin.shell: |
+        ls -lah /tmp/ha-backup-restore/
+        echo "---"
+        file /tmp/ha-backup-restore/homeassistant.tar.gz
+        echo "---"
+        hexdump -C /tmp/ha-backup-restore/homeassistant.tar.gz | head -3
+      register: debug_files
+
+    - name: Show debug output
+      ansible.builtin.debug:
+        var: debug_files.stdout_lines
+
     - name: DEBUG - Show ha_backup_encrypt_key value
       ansible.builtin.debug:
         msg: "Key: '{{ ha_backup_encrypt_key }}' | Length: {{ ha_backup_encrypt_key | length }}"
