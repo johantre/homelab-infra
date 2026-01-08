@@ -8,7 +8,7 @@
 
 This document covers the following disaster scenarios:
 
-| Scenario | Target Device Status            | Recovery Method |
+| Scenario | Target node Status              | Recovery Method |
 |----------|---------------------------------|-----------------|
 | **A** | Completely defect               | USB install + GitHub Actions |
 | **B** | Still working, .storage corrupt | Ansible direct recovery |
@@ -55,7 +55,7 @@ After a successful deployment and first backup:
 ```
 
 2. **Update HA_BACKUP_ENCRYPT_KEY:**
-   - **Controller (.env file):**
+   - **Controller node (.env file):**
 ```bash
      # Find new key in HA
      # HA UI → Settings → System → Backups → (i) icon → Encryption key
@@ -101,7 +101,7 @@ graph LR
     style D fill:#4caf50
 ```
 
-**On your controller node:**
+**On your Controller node:**
 
 ```bash
 cd ~/homelab/infra/boot
@@ -125,7 +125,7 @@ sudo ./create-two-usb-setup.sh
 
 ---
 
-### Phase 2: Target Installation (20 minutes)
+### Phase 2: Target node Installation (20 minutes)
 
 ```mermaid
 sequenceDiagram
@@ -147,7 +147,7 @@ sequenceDiagram
 
 1. **Boot from USB 1:**
    ```bash
-   # Insert USB 1 into target
+   # Insert USB 1 into Target node
    # Boot from USB (F12/F2 for boot menu)
    # Select USB drive
    ```
@@ -195,15 +195,15 @@ sequenceDiagram
    # Check hostname:
    hostname
    
-   # Check GitHub runner (on target):
+   # Check GitHub runner (on Target node):
    systemctl status actions.runner.*
    
    # Or check on GitHub:
    # https://github.com/{user}/{repo}/settings/actions/runners
-   # You should see your target listed as "Online"
+   # You should see your Target node listed as "Online"
    ```
 
-**Result:** Target is configured and GitHub runner is registered! ✅
+**Result:** Target node is configured and GitHub runner is registered! ✅
 
 ---
 
@@ -282,7 +282,7 @@ sequenceDiagram
 
 **Prerequisites:**
 - Local backup exists: `/mnt/backup/homeassistant/*.tar`
-- Backup volume mounted on target
+- Backup volume mounted on target node
 
 **What Gets Restored:**
 - ✅ All users and authentication
@@ -340,9 +340,9 @@ sequenceDiagram
 
 **After workflow completes successfully:**
 
-1. **Check Target:**
+1. **Check Target node:**
    ```bash
-   # SSH to target:
+   # SSH to Target node:
    ssh ubuntu@<target-hostname>.local
    # or
    ssh ubuntu@<target-ip>
@@ -376,11 +376,11 @@ sequenceDiagram
 
 ---
 
-## 🔄 Scenario B: Soft Recovery (Target Still Works)
+## 🔄 Scenario B: Soft Recovery (Target node Still Works)
 
-**Situation:** Target is running but `.storage/` is corrupt, or you want fresh state.
+**Situation:** Target node is running but `.storage/` is corrupt, or you want fresh state.
 
-### Quick Recovery from Controller
+### Quick Recovery from Controller node
 
 ```bash
 cd ~/homelab/infra
@@ -392,7 +392,7 @@ ansible-playbook -i inventories/ha_target_remote.ini site.yml -l ha_target -e en
 ansible-playbook -i inventories/ha_target_remote.ini site.yml -l ha_target -e env_file=../.env -e fresh_install=true
 ```
 
-**Result:** Same disaster recovery flow as GitHub Actions, but triggered directly from controller.
+**Result:** Same disaster recovery flow as GitHub Actions, but triggered directly from Controller node.
 
 ---
 
@@ -406,7 +406,7 @@ Same as **Scenario A**, but:
 1. Skip USB 2 setup script (SSH already configured)
 2. Manually mount backup volume if needed:
    ```bash
-   # On target:
+   # On Target node:
    sudo mkdir -p /mnt/backup
    sudo mount /dev/sdb1 /mnt/backup
    ```
@@ -454,7 +454,7 @@ GitHub → Actions → Deploy Home Assistant → Run workflow
 → Run workflow
 ```
 
-**Via Controller:**
+**Via Controller node:**
 ```bash
 ansible-playbook -i inventories/ha_target_remote.ini site.yml \
   -l ha_target \
@@ -593,7 +593,7 @@ lsblk | grep -E "sd[b-z]"
 sudo ./create-two-usb-setup.sh --test-mode
 ```
 
-### Setup Script Won't Run on Target
+### Setup Script Won't Run on Target node
 
 **Problem:** Permission denied running `setup-machine.sh`
 
@@ -617,7 +617,7 @@ sudo bash /mnt/usb/setup-machine.sh
 
 **Solutions:**
 ```bash
-# On target, check runner status:
+# On Target node, check runner status:
 systemctl status actions.runner.*
 
 # Check runner logs:
