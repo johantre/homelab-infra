@@ -16,6 +16,10 @@ ansible-playbook -i inventories/ha_target_remote.ini site.yml -l ha_target -e en
 
 # Local deployment (on same machine):
 ansible-playbook -i inventories/ha_target_local.ini site.yml -l ha -e env_file=../.env
+
+# GitHub Actions (with version override):
+GitHub → Actions → Deploy Home Assistant → Run workflow
+→ ha_version_override: 2025.12.4
 ```
 
 ## 🐳 Container Management

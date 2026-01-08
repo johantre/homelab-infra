@@ -33,6 +33,62 @@ Make sure you have the following:
 - [ ] ✅ Network access to seedbox (optional)
 - [ ] ✅ Local backup encrypted files (optional, in `/mnt/backup/homeassistant/`)
 
+## 🔐 Backup Encryption Key Management
+
+### Critical: Each Deploy = New Encryption Key
+
+**Every successful HA deployment generates a NEW random backup encryption key.**
+
+This means:
+- ✅ Old backups (before deploy) → Encrypted with OLD key
+- ✅ New backups (after deploy) → Encrypted with NEW key
+- ❌ OLD key cannot decrypt NEW backups
+- ❌ NEW key cannot decrypt OLD backups
+
+### Post-Deploy Checklist
+
+After a successful deployment and first backup:
+
+1. **Create first backup with new key:**
+```
+   HA UI → Settings → System → Backups → Create backup
+```
+
+2. **Update HA_BACKUP_ENCRYPT_KEY:**
+   - **Controller (.env file):**
+```bash
+     # Find new key in HA
+     # HA UI → Settings → System → Backups → (i) icon → Encryption key
+     
+     # Update .env
+     vim ../.env
+     # Change: HA_BACKUP_ENCRYPT_KEY=<new-key>
+```
+
+- **GitHub Secrets:**
+```
+     GitHub → Settings → Secrets and variables → Actions
+     → Update HA_BACKUP_ENCRYPT_KEY
+```
+
+3. **Remove old backups (optional but recommended):**
+```bash
+   ssh ubuntu@<target>
+   sudo rm /mnt/backup/homeassistant/*.tar
+```
+
+Reason: They use the old key and will fail to restore.
+
+### Why This Matters
+
+During disaster recovery, the playbook:
+1. Looks for backups in `/mnt/backup/homeassistant/`
+2. Tries newest backup first
+3. Uses `HA_BACKUP_ENCRYPT_KEY` from secrets/env
+4. **If key mismatch → "Unknown format" error**
+
+**Common mistake:** Deploy succeeds → HA creates new backup → Old key still in secrets → Next disaster recovery fails!
+
 ### Phase 1: USB Preparation (10 minutes)
 
 ```mermaid
@@ -386,6 +442,28 @@ Following **Scenario A** will result in:
    - Ensure `/mnt/backup` volume is mounted
 
 ---
+
+## 🔙 Emergency Version Rollback
+
+If a HA version causes issues after deploy:
+
+**Via GitHub Actions:**
+```
+GitHub → Actions → Deploy Home Assistant → Run workflow
+→ ha_version_override: 2025.12.4  # Last known good version
+→ Run workflow
+```
+
+**Via Controller:**
+```bash
+ansible-playbook -i inventories/ha_target_remote.ini site.yml \
+  -l ha_target \
+  -e env_file=../.env \
+  -e ha_version_override=2025.12.4
+```
+
+This downgrades HA but keeps all your data and configuration intact.
+
 
 ## 🎯 Recovery Decision Tree
 

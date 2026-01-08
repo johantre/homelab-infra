@@ -402,6 +402,30 @@ graph LR
 - ✅ Audit trail in GitHub Actions
 - ✅ Can trigger from anywhere
 
+##### Emergency Version Override
+
+The workflow supports `ha_version_override` for emergency situations:
+
+**When to use:**
+- 🐛 Latest HA version has critical bug
+- 🚨 Regression breaks your setup
+- 🔙 Need to rollback to stable version
+
+**How to use:**
+```
+GitHub → Actions → Deploy Home Assistant → Run workflow
+→ HA emergency version override: 2025.12.4
+→ Run workflow
+```
+
+**Example scenarios:**
+- `2026.1.0` breaks frontend → Override to `2025.12.4`
+- Integration fails in latest → Rollback to last working version
+- Testing specific version → Pin to exact release
+
+**Note:** Version is stored in `.ha_version.lock` on target. Future deploys use locked version unless overridden again.
+
+
 ---
 
 <a name="common-operations"></a>
