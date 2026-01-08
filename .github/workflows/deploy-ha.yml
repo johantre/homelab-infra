@@ -2,6 +2,10 @@ name: Deploy Home Assistant
 
 on:
   workflow_dispatch:
+    inputs:
+      ha_version_override:
+        description: 'HA emergency version override'
+        required: false
 
 jobs:
   deploy-homeassistant:
@@ -181,6 +185,7 @@ jobs:
             -i inventories/ha_target_local.ini \
             site.yml \
             -l ha_target \
+            -e ha_version_override=${{ github.event.inputs.ha_version_override }} \
             -vv \
             2>&1 | tee ansible-deploy.log
           
