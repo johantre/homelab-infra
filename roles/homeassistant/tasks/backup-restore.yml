@@ -91,17 +91,23 @@
       ansible.builtin.debug:
         msg: "{{ ansible_key_hash.stdout }}"
 
-    - name: Decrypt and extract homeassistant.tar.gz with hassio-tar.sh
+    - name: TEST - Decrypt WITHOUT tar to see actual output
       ansible.builtin.shell: |
         cd /tmp/ha-backup-restore
         export HASSIO_PASSWORD="{{ ha_backup_encrypt_key }}"
-        /tmp/ha-backup-restore/hassio-tar.sh homeassistant.tar.gz | tar -x
+        /tmp/ha-backup-restore/hassio-tar.sh homeassistant.tar.gz > /tmp/decrypt-test.out 2>&1
+        echo "Exit code: $?"
+        ls -lh /tmp/decrypt-test.out
+        file /tmp/decrypt-test.out
+        head -c 100 /tmp/decrypt-test.out | hexdump -C
       args:
         executable: /bin/bash
-      register: decrypt_extract
-      failed_when: decrypt_extract.rc != 0
-      changed_when: true
-      no_log: false
+      register: decrypt_test
+      failed_when: false
+
+    - name: Show decrypt output
+      ansible.builtin.debug:
+        var: decrypt_test.stdout_lines
 
     - name: Show decrypt debug
       debug:
