@@ -94,7 +94,10 @@
     - name: Decrypt and extract homeassistant.tar.gz with hassio-tar.sh
       ansible.builtin.shell: |
         cd /tmp/ha-backup-restore
-        HASSIO_PASSWORD="{{ ha_backup_encrypt_key }}" ./hassio-tar.sh homeassistant.tar.gz | tar -x
+        export HASSIO_PASSWORD="{{ ha_backup_encrypt_key }}"
+        /tmp/ha-backup-restore/hassio-tar.sh homeassistant.tar.gz | tar -x
+      args:
+        executable: /bin/bash
       register: decrypt_extract
       failed_when: decrypt_extract.rc != 0
       changed_when: true
