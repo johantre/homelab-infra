@@ -9,7 +9,7 @@ base_dir: "{{ base_home }}/homelab/target"
 
 # --- Homeassistant
 ha_version: "stable"
-ha_version_override: ""
+ha_version_override: "2025.12.4"
 ha_project: "ha-stack-ansible"
 ha_stack_dir:  "{{ base_dir }}/ha-stack-ansible"
 ha_config_dir: "{{ base_dir }}/homeassistant-ansible/config"
