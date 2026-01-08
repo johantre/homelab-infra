@@ -55,7 +55,7 @@ After a successful deployment and first backup:
 ```
 
 2. **Update HA_BACKUP_ENCRYPT_KEY:**
-   - **Controller node (.env file):**
+- **Controller node (.env file):**
 ```bash
      # Find new key in HA
      # HA UI → Settings → System → Backups → (i) icon → Encryption key
