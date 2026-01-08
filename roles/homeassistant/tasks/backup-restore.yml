@@ -89,7 +89,7 @@
 
     - name: Show key hash
       ansible.builtin.debug:
-        msg: "Ansible key hash: {{ ansible_key_hash.stdout }}"
+        msg: "{{ ansible_key_hash.stdout }}"
 
     - name: Decrypt and extract homeassistant.tar.gz with hassio-tar.sh
       ansible.builtin.shell: |
