@@ -64,8 +64,23 @@
         msg: "❌ homeassistant.tar.gz not found in backup!"
       when: not ha_tar_gz_stat.stat.exists
 
-    - name: Decrypt with bash -c
-      ansible.builtin.shell: bash -c 'cd /tmp/ha-backup-restore && export HASSIO_PASSWORD="{{ ha_backup_encrypt_key }}" && /tmp/ha-backup-restore/hassio-tar.sh < homeassistant.tar.gz | tar -x'
+    - block:
+      - name: Decrypt with bash -c
+        ansible.builtin.shell: bash -c 'cd /tmp/ha-backup-restore && export HASSIO_PASSWORD="{{ ha_backup_encrypt_key }}" && /tmp/ha-backup-restore/hassio-tar.sh < homeassistant.tar.gz | tar -x'
+
+      rescue:
+        - name: Show helpful decrypt error
+          ansible.builtin.fail:
+            msg: |
+              ❌ BACKUP DECRYPT FAILED!
+              
+              Most common cause: Wrong encryption key
+              Other causes: Corrupt backup file, disk space issue
+              
+              Check:
+              - Is HA_BACKUP_ENCRYPT_KEY correct?
+              - ⚠️ Was backup created with THIS key?
+              - ⚠️ Remember: Each backup from new deployed HA = new random key!
 
     - name: Check for data directory
       ansible.builtin.stat:
@@ -162,17 +177,3 @@
         path: /tmp/ha-backup-restore
         state: absent
       failed_when: false
-
-  rescue:
-    - name: Show helpful decrypt error
-      ansible.builtin.fail:
-        msg: |
-          ❌ BACKUP DECRYPT FAILED!
-          
-          Most common cause: Wrong encryption key
-          Other causes: Corrupt backup file, disk space issue
-          
-          Check:
-          - Is HA_BACKUP_ENCRYPT_KEY correct?
-          - ⚠️ Was backup created with THIS key?
-          - ⚠️ Remember: Each backup from new deployed HA = new random key!
