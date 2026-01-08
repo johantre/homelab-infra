@@ -48,6 +48,12 @@
         dest: /tmp/ha-backup-restore/hassio-tar.sh
         mode: '0755'
 
+    - name: Copy decrypt wrapper to target
+      ansible.builtin.copy:
+        src: decrypt-backup.sh
+        dest: /tmp/ha-backup-restore/decrypt-backup.sh
+        mode: '0755'
+
     - name: Extract outer tar from backup
       ansible.builtin.unarchive:
         src: "{{ latest_backup.path }}"
@@ -64,8 +70,13 @@
         msg: "❌ homeassistant.tar.gz not found in backup!"
       when: not ha_tar_gz_stat.stat.exists
 
-    - name: Decrypt with bash -c
-      ansible.builtin.shell: bash -c 'cd /tmp/ha-backup-restore && export HASSIO_PASSWORD="{{ ha_backup_encrypt_key }}" && /tmp/ha-backup-restore/hassio-tar.sh < homeassistant.tar.gz | tar -x'
+    - name: Decrypt with standalone script
+      ansible.builtin.command: >
+        /tmp/ha-backup-restore/decrypt-backup.sh
+        /tmp/ha-backup-restore
+        {{ ha_backup_encrypt_key }}
+      args:
+        chdir: /tmp/ha-backup-restore
 
     - name: Check for data directory
       ansible.builtin.stat:
