@@ -946,13 +946,6 @@ graph TB
 
 This is a personal homelab project, but suggestions and improvements are welcome via issues or pull requests!
 
-<a name="license"></a>
-## 📝 License
-
-Private repository - all rights reserved.
-
----
-
 <a name="quick-links"></a>
 ## 🔗 Quick Links
 
@@ -961,6 +954,20 @@ Private repository - all rights reserved.
 - [Docker Compose Documentation](https://docs.docker.com/compose/)
 - [GitHub Actions Self-Hosted Runners](https://docs.github.com/en/actions/hosting-your-own-runners)
 
+## 📜 License
+
+This project is licensed under the Creative Commons Attribution-NonCommercial 4.0 International License (CC BY-NC 4.0). This means you can:
+
+- Share: Copy and redistribute the material in any medium or format
+- Adapt: Remix, transform, and build upon the material
+
+Under the following terms:
+- Attribution: You must give appropriate credit, provide a link to the license, and indicate if changes were made.
+- NonCommercial: You may not use the material for commercial purposes.
+- No additional restrictions: You may not apply legal terms or technological measures that legally restrict others from doing anything the license permits.
+
+See the [LICENSE](LICENSE) file for details.
+
 ---
 
-**Last Updated:** January 2026
+**Made with ❤️ for efficiency and automation**
