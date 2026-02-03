@@ -1,0 +1,8 @@
+# Ignore all data files - contains potentially sensitive info
+*
+
+# But keep this .gitignore and the folder structure
+!.gitignore
+!solis_cloud/.gitkeep
+!ha_database/.gitkeep
+!weather/.gitkeep
