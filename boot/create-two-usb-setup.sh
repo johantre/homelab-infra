@@ -280,15 +280,15 @@ echo -e "${GREEN}Step 2: Configuration for post-install script${NC}"
 echo
 
 # Config
-echo -ne "${YELLOW}Hostname [homeassistance]: ${NC}"
+echo -ne "${YELLOW}Hostname [homeassistant]: ${NC}"
 read HOSTNAME
-HOSTNAME=${HOSTNAME:-homeassistance}
+HOSTNAME=${HOSTNAME:-homeassistant}
 
 echo
 echo -e "${BLUE}Note: Script will configure the user created during installation${NC}"
 echo
 
-echo -e "${YELLOW}SSH Public Key (paste and press Enter, or leave empty to skip):${NC}"
+echo -e "${YELLOW}SSH Public Key (paste with Ctrl+Shift+v and press Enter, or leave empty to skip):${NC}"
 echo -ne "${YELLOW}SSH Key: ${NC}"
 read SSH_KEY
 if [ -n "$SSH_KEY" ]; then
