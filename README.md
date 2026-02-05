@@ -920,6 +920,39 @@ This infrastructure is designed to support multiple devices and services:
 - The workflow can then be simplified to read files locally instead of tar-over-SSH
 
 
+### Pending: RPi4 Migration (Supervised → Containerized)
+
+**Status:** Ready to execute. HA ansible verified as working seedbox.
+
+**Goal:** Migrate RPi4 (192.168.3.8) from HA Supervised (HAOS on SD card) to Containerized HA (Ubuntu + Docker on SSD), using the existing Ansible infrastructure.
+
+**Hardware:**
+- Raspberry Pi 4
+- Argon One M.2 case with 1TB SATA SSD
+- Current SD card with HA Supervised (keep as fallback)
+
+**Pre-migration:**
+1. Ensure RPi4 EEPROM supports USB boot (`vcgencmd bootloader_version`). If not: `sudo rpi-eeprom-update -a` while still on SD card.
+2. Verify HA ansible is running cleanly (it becomes the seedbox)
+3. Take a final manual backup on HA prod (Settings → System → Backups → Create backup)
+
+**Migration steps:**
+1. Flash Ubuntu Server (arm64) onto the SSD
+2. Boot RPi4 from SSD (SD card removed)
+3. Run `setup-machine.sh` from USB 2 (sets hostname, SSH key, GitHub runner)
+4. Deploy via Ansible: `ansible-playbook -i inventories/ha_target_remote.ini site.yml -l ha_target -e env_file=../.env`
+   - Ansible will discover HA ansible (192.168.3.33) as seedbox
+   - `.storage/` gets synced from HA ansible to new RPi4
+
+**Post-migration checklist:**
+- [ ] **Backup agent**: Configure via UI (Settings → System → Backups). Select `backup.local` as agent. The old `hassio.local` agent (Supervisor-specific) does not exist on containerized HA. Without this, `backup.create_automatic` fails with `At least one available backup agent must be selected, got []`.
+- [ ] **Verify nightly backup**: Wait for 01:00 trigger or manually set `input_boolean.backup_needed` to on, then check next morning.
+- [ ] **Git sync trigger**: Now possible — containerized HA has runner + GH_PAT available. See "Pending: Event-Driven Prod → Git Sync" section above.
+- [ ] **IP address**: If RPi4 gets a different IP than 192.168.3.8, update Ansible inventory + workflow files.
+- [ ] **Decommission HA ansible**: Once RPi4 is stable, HA ansible (192.168.3.33) can be repurposed or shut down.
+
+**Fallback:** If SSD boot fails, re-insert the SD card — original HA Supervised is untouched.
+
 ### Scaling Architecture
 
 ```mermaid
