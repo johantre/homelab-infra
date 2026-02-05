@@ -892,6 +892,33 @@ This infrastructure is designed to support multiple devices and services:
         * updates _keep_ working
         * backups _keep_ working
 
+### Pending: Event-Driven Prod → Git Sync
+
+**Status:** Workflow created (`sync-prod-to-git.yml`), trigger mechanism pending until RPi4 migration.
+
+**Problem:** Config changes on prod (HACS updates, YAML edits) don't flow back to git. This caused broken deploys when `custom_components/` versions in git were older than what `.storage/` config entries expected (e.g., solis_modbus 3.3.12 in git vs 4.0.1 on prod).
+
+**Solution already built:**
+- `.github/workflows/sync-prod-to-git.yml` — uses tar-over-SSH (HAOS has no rsync), clones config repo, detects changes, commits as `homelab-sync-bot`
+- Triggers: `repository_dispatch` (event: `prod-config-changed`) + `workflow_dispatch` (manual with dry_run option)
+- No cron — purely event-driven
+
+**What's still needed (after RPi4 migrates to containerized HA via Ansible):**
+1. **Ansible task** to provision `github_pat` into HA `secrets.yaml` during deploy (PAT flows: GitHub Secrets → Ansible → secrets.yaml → HA)
+2. **`rest_command`** in `configuration.yaml` that calls `https://api.github.com/repos/johantre/homelab-infra/dispatches` with event `prod-config-changed`
+3. **HA automation** at 02:00 (after nightly backup at 01:00): if `input_boolean.backup_needed` was on → trigger git sync via rest_command
+
+**Why event-driven, not cron:**
+- HA already detects changes via `automation_reloaded` + `service_registered` events → sets `input_boolean.backup_needed`
+- A YAML edit without HA reload has no effect (HA hasn't loaded it), so the reload event catches all meaningful changes
+- Same pattern as existing backup: event-driven detection, batched nightly execution
+- No polling, no extra complexity
+
+**Why this waits for RPi4 migration:**
+- Current HA prod is Supervised (HAOS) with no GH_PAT and limited tooling
+- After migration: HA runs containerized on a machine with the GitHub Actions runner, GH_PAT available via Ansible, and local file access (no SSH needed for sync)
+- The workflow can then be simplified to read files locally instead of tar-over-SSH
+
 
 ### Scaling Architecture
 
