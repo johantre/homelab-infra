@@ -935,6 +935,11 @@ This infrastructure is designed to support multiple devices and services:
 1. Ensure RPi4 EEPROM supports USB boot (`vcgencmd bootloader_version`). If not: `sudo rpi-eeprom-update -a` while still on SD card.
 2. Verify HA ansible is running cleanly (it becomes the seedbox)
 3. Take a final manual backup on HA prod (Settings → System → Backups → Create backup)
+4. Stop the runner op de HA ansible node: \
+  (`ssh ubuntu@192.168.3.33 cd ~/actions-runner sudo ./svc.sh stop`) \
+    OR \
+  Remove the runner 'homeassistance' runner on the target machine: \
+  (`GitHub → repo Settings → Actions → Runners → verwijder homeassistance`)
 
 **Migration steps:**
 1. Flash Ubuntu Server (arm64) onto the SSD
