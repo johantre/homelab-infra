@@ -1100,6 +1100,10 @@ if [ "$DISK_SIZE_GB" -gt 100 ]; then
     echo -e "${BLUE}[4/5] Creating backup partition...${NC}"
     parted -s "${M2_DEVICE}" mkpart primary ext4 88GB 100%
 
+    # Re-read partition table so kernel can detect existing filesystem
+    partprobe "${M2_DEVICE}"
+    sleep 2
+
     # Find and format the new backup partition
     M2_BACKUP=""
     if [ -b "${M2_DEVICE}3" ]; then
@@ -1109,10 +1113,36 @@ if [ "$DISK_SIZE_GB" -gt 100 ]; then
     fi
 
     if [ -n "$M2_BACKUP" ]; then
-        echo -e "${BLUE}[5/5] Formatting backup partition...${NC}"
-        mkfs.ext4 -L backup "$M2_BACKUP"
         BACKUP_SIZE=$(lsblk -n -o SIZE "$M2_BACKUP" 2>/dev/null)
-        echo -e "${GREEN}Backup partition created: ${BACKUP_SIZE}${NC}"
+        EXISTING_LABEL=$(lsblk -n -o LABEL "$M2_BACKUP" 2>/dev/null | xargs)
+        EXISTING_FSTYPE=$(lsblk -n -o FSTYPE "$M2_BACKUP" 2>/dev/null | xargs)
+
+        if [ "$EXISTING_LABEL" = "backup" ] && [ "$EXISTING_FSTYPE" = "ext4" ]; then
+            # Existing backup partition found - ask user what to do
+            echo
+            echo -e "${CYAN}========================================${NC}"
+            echo -e "${CYAN}  Existing backup partition detected!  ${NC}"
+            echo -e "${CYAN}========================================${NC}"
+            echo -e "${YELLOW}Size: ${BACKUP_SIZE}${NC}"
+            echo
+            echo -e "${YELLOW}This partition may contain Home Assistant backups.${NC}"
+            echo -ne "${YELLOW}Preserve existing data? (yes/no): ${NC}"
+            read PRESERVE_BACKUP
+
+            if [ "$PRESERVE_BACKUP" = "yes" ]; then
+                echo -e "${GREEN}[5/5] Preserving existing backup partition${NC}"
+                echo -e "${GREEN}Backup data preserved!${NC}"
+            else
+                echo -e "${BLUE}[5/5] Formatting backup partition...${NC}"
+                mkfs.ext4 -F -L backup "$M2_BACKUP"
+                echo -e "${GREEN}Backup partition formatted: ${BACKUP_SIZE}${NC}"
+            fi
+        else
+            # No existing backup - format it
+            echo -e "${BLUE}[5/5] Formatting backup partition...${NC}"
+            mkfs.ext4 -L backup "$M2_BACKUP"
+            echo -e "${GREEN}Backup partition created: ${BACKUP_SIZE}${NC}"
+        fi
     fi
 
     # Re-read partition table
