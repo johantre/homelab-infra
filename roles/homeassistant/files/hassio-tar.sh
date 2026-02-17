@@ -103,13 +103,15 @@ derive_iv() {
   echo "$data" | head -c32
 }
 decrypt_stream() {
+  # Note: Using 'cat' instead of 'dd bs=1M' because uutils dd (Rust coreutils)
+  # on ARM64 has a bug that corrupts data when reading from stdin in a pipe.
+  # See: https://github.com/uutils/coreutils - affects Ubuntu 24.04+ on ARM.
   local saltbytes salt key iv
   saltbytes=16
   salt="$(dd skip=2 bs="$saltbytes" count=1 status=none | xxd -p | tr -d '\n')"
   key="$(derive_key "${HASSIO_PASSWORD}")"
   iv="$(derive_iv "${key}${salt}")"
-  dd bs="1M" status=none | \
-    openssl enc -d -aes-128-cbc -K "$key" -iv "$iv"
+  cat | openssl enc -d -aes-128-cbc -K "$key" -iv "$iv"
 }
 
 #
