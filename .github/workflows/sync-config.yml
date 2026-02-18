@@ -1,0 +1,245 @@
+name: Sync Device Config
+
+on:
+  # Scheduled - runs nightly, checks if sync is needed
+  schedule:
+    - cron: '30 1 * * *'   # 01:30 UTC daily (after backup at 01:00)
+
+  # Manual trigger
+  workflow_dispatch:
+    inputs:
+      device:
+        description: 'Device to sync'
+        required: true
+        default: 'homeassistant'
+        type: choice
+        options:
+          - homeassistant
+          # - pihole
+          # - openwrt
+      force:
+        description: 'Force sync (ignore conflicts)'
+        required: false
+        default: false
+        type: boolean
+      skip_check:
+        description: 'Skip HA flag check (sync anyway)'
+        required: false
+        default: false
+        type: boolean
+
+env:
+  HA_URL: "http://localhost:8123"
+  CONFIG_REPO: "johantre/homelab-config"
+
+jobs:
+  sync:
+    name: Sync ${{ inputs.device || 'homeassistant' }}
+    runs-on: self-hosted
+
+    steps:
+      - name: Determine device and options
+        id: device
+        run: |
+          DEVICE="${{ inputs.device || 'homeassistant' }}"
+          FORCE="${{ inputs.force || 'false' }}"
+          SKIP_CHECK="${{ inputs.skip_check || 'false' }}"
+          echo "device=$DEVICE" >> $GITHUB_OUTPUT
+          echo "force=$FORCE" >> $GITHUB_OUTPUT
+          echo "skip_check=$SKIP_CHECK" >> $GITHUB_OUTPUT
+          echo "📱 Device: $DEVICE"
+
+      - name: Check if sync is needed (HA flag)
+        id: check_flag
+        run: |
+          SKIP_CHECK="${{ steps.device.outputs.skip_check }}"
+
+          # Manual trigger with skip_check bypasses flag check
+          if [ "$SKIP_CHECK" == "true" ]; then
+            echo "⏭️ Skipping flag check (manual override)"
+            echo "should_sync=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # Check HA input_boolean.git_sync_needed
+          RESPONSE=$(curl -s -X GET "$HA_URL/api/states/input_boolean.git_sync_needed" \
+            -H "Authorization: Bearer ${{ secrets.HA_LONG_LIVED_TOKEN_GH_ACTIONS_GIT_SYNC }}" \
+            -H "Content-Type: application/json" 2>/dev/null || echo '{"state": "unknown"}')
+
+          STATE=$(echo "$RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('state', 'unknown'))" 2>/dev/null || echo "unknown")
+
+          echo "📋 git_sync_needed state: $STATE"
+
+          if [ "$STATE" == "on" ]; then
+            echo "✅ Sync needed - proceeding"
+            echo "should_sync=true" >> $GITHUB_OUTPUT
+          else
+            echo "⏭️ No sync needed - skipping"
+            echo "should_sync=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Exit early if not needed
+        if: steps.check_flag.outputs.should_sync != 'true'
+        run: |
+          echo "::notice::No sync needed. git_sync_needed flag is off."
+          echo "To force sync, use workflow_dispatch with skip_check=true"
+
+      - name: Checkout config repo
+        if: steps.check_flag.outputs.should_sync == 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.CONFIG_REPO }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+          path: config-repo
+
+      - name: Read device config
+        if: steps.check_flag.outputs.should_sync == 'true'
+        id: config
+        working-directory: config-repo
+        run: |
+          DEVICE="${{ steps.device.outputs.device }}"
+          python3 << EOF
+          import yaml
+          import os
+
+          with open('sync-config.yml') as f:
+              config = yaml.safe_load(f)
+
+          device = "$DEVICE"
+          dev_config = config.get('devices', {}).get(device)
+
+          if not dev_config:
+              print(f"::error::Device '{device}' not found in sync-config.yml")
+              exit(1)
+
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+              f.write(f"source_host={dev_config['source_host']}\n")
+              f.write(f"source_user={dev_config['source_user']}\n")
+              f.write(f"source_path={dev_config['source_path']}\n")
+              f.write(f"target_folder={dev_config['target_folder']}\n")
+              f.write(f"ha_notify={dev_config.get('ha_notify', False)}\n")
+              excludes = dev_config.get('excludes', [])
+              exclude_args = ' '.join([f"--exclude='{e}'" for e in excludes])
+              f.write(f"exclude_args={exclude_args}\n")
+
+          print(f"✅ Config loaded for {device}")
+          print(f"   Source: {dev_config['source_user']}@{dev_config['source_host']}:{dev_config['source_path']}")
+          print(f"   Target: {dev_config['target_folder']}/")
+          EOF
+
+      - name: Check for conflicts
+        if: steps.check_flag.outputs.should_sync == 'true'
+        id: conflict
+        working-directory: config-repo
+        run: |
+          git fetch origin main
+          BEHIND=$(git rev-list HEAD..origin/main --count 2>/dev/null || echo "0")
+
+          if [ "$BEHIND" -gt 0 ] && [ "${{ steps.device.outputs.force }}" != "true" ]; then
+            echo "conflict=true" >> $GITHUB_OUTPUT
+            echo "::error::CONFLICT: GitHub has $BEHIND commits not yet on PROD!"
+            echo "::error::Deploy those changes first, or use force=true"
+          else
+            echo "conflict=false" >> $GITHUB_OUTPUT
+            git pull --ff-only origin main || true
+          fi
+
+      - name: Notify HA - conflict
+        if: steps.check_flag.outputs.should_sync == 'true' && steps.conflict.outputs.conflict == 'true'
+        run: |
+          curl -s -X POST "$HA_URL/api/states/input_text.git_sync_status" \
+            -H "Authorization: Bearer ${{ secrets.HA_LONG_LIVED_TOKEN_GH_ACTIONS_GIT_SYNC }}" \
+            -H "Content-Type: application/json" \
+            -d '{"state": "conflict", "attributes": {"message": "GitHub ahead of PROD - deploy first", "device": "${{ steps.device.outputs.device }}"}}' || true
+
+          curl -s -X POST "$HA_URL/api/services/persistent_notification/create" \
+            -H "Authorization: Bearer ${{ secrets.HA_LONG_LIVED_TOKEN_GH_ACTIONS_GIT_SYNC }}" \
+            -H "Content-Type: application/json" \
+            -d '{"title": "Git Sync Conflict", "message": "GitHub has commits not on PROD. Deploy first!", "notification_id": "git_sync_conflict"}' || true
+
+      - name: Abort on conflict
+        if: steps.check_flag.outputs.should_sync == 'true' && steps.conflict.outputs.conflict == 'true'
+        run: exit 1
+
+      - name: Rsync from device
+        if: steps.check_flag.outputs.should_sync == 'true' && steps.conflict.outputs.conflict != 'true'
+        working-directory: config-repo
+        run: |
+          mkdir -p "${{ steps.config.outputs.target_folder }}"
+
+          eval rsync -avz --delete \
+            ${{ steps.config.outputs.exclude_args }} \
+            "${{ steps.config.outputs.source_user }}@${{ steps.config.outputs.source_host }}:${{ steps.config.outputs.source_path }}" \
+            "${{ steps.config.outputs.target_folder }}/"
+
+          echo "✅ Rsync completed"
+
+      - name: Check for changes
+        if: steps.check_flag.outputs.should_sync == 'true' && steps.conflict.outputs.conflict != 'true'
+        id: changes
+        working-directory: config-repo
+        run: |
+          git add -A "${{ steps.config.outputs.target_folder }}/"
+
+          if git diff --cached --quiet; then
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+            echo "📋 No changes detected"
+          else
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+            CHANGED=$(git diff --cached --name-only | wc -l)
+            echo "changed_count=$CHANGED" >> $GITHUB_OUTPUT
+            echo "📋 $CHANGED file(s) changed"
+          fi
+
+      - name: Commit and push
+        if: steps.check_flag.outputs.should_sync == 'true' && steps.changes.outputs.has_changes == 'true'
+        working-directory: config-repo
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+
+          git commit -m "Auto-sync ${{ steps.device.outputs.device }} $(date +%Y-%m-%d)
+
+          Synced from ${{ steps.config.outputs.source_host }}
+          Files changed: ${{ steps.changes.outputs.changed_count }}"
+
+          git push origin main
+          echo "✅ Pushed to GitHub"
+
+      - name: Reset HA flag
+        if: steps.check_flag.outputs.should_sync == 'true' && steps.conflict.outputs.conflict != 'true'
+        run: |
+          # Turn off git_sync_needed
+          curl -s -X POST "$HA_URL/api/services/input_boolean/turn_off" \
+            -H "Authorization: Bearer ${{ secrets.HA_LONG_LIVED_TOKEN_GH_ACTIONS_GIT_SYNC }}" \
+            -H "Content-Type: application/json" \
+            -d '{"entity_id": "input_boolean.git_sync_needed"}' || true
+
+          # Update status
+          MSG="Synced ${{ steps.changes.outputs.changed_count || '0' }} files"
+          curl -s -X POST "$HA_URL/api/states/input_text.git_sync_status" \
+            -H "Authorization: Bearer ${{ secrets.HA_LONG_LIVED_TOKEN_GH_ACTIONS_GIT_SYNC }}" \
+            -H "Content-Type: application/json" \
+            -d "{\"state\": \"ok\", \"attributes\": {\"message\": \"$MSG\", \"device\": \"${{ steps.device.outputs.device }}\", \"last_sync\": \"$(date -Iseconds)\"}}" || true
+
+          # Clear any conflict notification
+          curl -s -X POST "$HA_URL/api/services/persistent_notification/dismiss" \
+            -H "Authorization: Bearer ${{ secrets.HA_LONG_LIVED_TOKEN_GH_ACTIONS_GIT_SYNC }}" \
+            -H "Content-Type: application/json" \
+            -d '{"notification_id": "git_sync_conflict"}' || true
+
+          echo "✅ HA flag reset"
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "## Sync Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Device | ${{ steps.device.outputs.device }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Sync needed | ${{ steps.check_flag.outputs.should_sync }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Conflict | ${{ steps.conflict.outputs.conflict || 'n/a' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Changes | ${{ steps.changes.outputs.changed_count || '0' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Status | ${{ job.status }} |" >> $GITHUB_STEP_SUMMARY
