@@ -1,6 +1,7 @@
 services:
   {{ ha_container_name }}:
-    image: "ghcr.io/home-assistant/home-assistant:{{ ha_effective_version }}"
+    # TODO: REVERT AFTER TEST - original: ghcr.io/home-assistant/home-assistant:{{ ha_effective_version }}
+    image: "ghcr.io/home-assistant/home-assistant:FAKE-TAG-TEST-99999"
     container_name: "{{ ha_container_name }}"
     user: "{{ runtime_uid }}:{{ runtime_gid }}"
     privileged: true

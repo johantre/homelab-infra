@@ -33,25 +33,60 @@
   ansible.builtin.import_tasks: env_boot.yml
   tags: [always, containers_update]
 
-# Pull + up ONLY homeassistant (faster/safer); if needed, put back to "all services" if you want
-- name: Docker compose pull (all services)
-  no_log: true
-  ansible.builtin.shell: |
-    sg docker -c 'docker compose -p {{ ha_project | quote }} -f {{ ha_stack_dir }}/docker-compose.yml pull'
-  args:
-    chdir: "{{ ha_stack_dir }}"
-  environment: "{{ compose_global_env | mandatory('compose_global_env undefined – env_boot skipped or failed') }}"
-  register: ha_pull
-  changed_when: (ha_pull.stdout | default('') ~ ha_pull.stderr | default('')) is search('Downloaded')
-  tags: [ ha_update, containers_update ]
+# Pull + up with better error handling for network timeouts
+- name: Docker compose pull and up
+  block:
+    - name: Docker compose pull (all services)
+      no_log: true
+      ansible.builtin.shell: |
+        sg docker -c 'docker compose -p {{ ha_project | quote }} -f {{ ha_stack_dir }}/docker-compose.yml pull 2>&1'
+      args:
+        chdir: "{{ ha_stack_dir }}"
+      environment: "{{ compose_global_env | mandatory('compose_global_env undefined – env_boot skipped or failed') }}"
+      register: ha_pull
+      changed_when: (ha_pull.stdout | default('') ~ ha_pull.stderr | default('')) is search('Downloaded')
+      tags: [ ha_update, containers_update ]
 
-- name: Docker compose up -d (all services)
-  no_log: true
-  ansible.builtin.shell: |
-    sg docker -c 'docker compose -p {{ ha_project | quote }} -f {{ ha_stack_dir }}/docker-compose.yml up -d'
-  args:
-    chdir: "{{ ha_stack_dir }}"
-  environment: "{{ compose_global_env | mandatory('compose_global_env undefined – env_boot skipped or failed') }}"
-  register: ha_up
-  changed_when: (ha_up.stdout | default('') ~ ha_up.stderr | default('')) is search('(?i)(recreated|recreating|created|creating|starting)')
+    - name: Docker compose up -d (all services)
+      no_log: true
+      ansible.builtin.shell: |
+        sg docker -c 'docker compose -p {{ ha_project | quote }} -f {{ ha_stack_dir }}/docker-compose.yml up -d 2>&1'
+      args:
+        chdir: "{{ ha_stack_dir }}"
+      environment: "{{ compose_global_env | mandatory('compose_global_env undefined – env_boot skipped or failed') }}"
+      register: ha_up
+      changed_when: (ha_up.stdout | default('') ~ ha_up.stderr | default('')) is search('(?i)(recreated|recreating|created|creating|starting)')
+      tags: [ha_update, containers_update]
+
+  rescue:
+    - name: Check Docker Hub connectivity
+      ansible.builtin.shell: |
+        curl -sS --connect-timeout 10 --max-time 15 https://registry-1.docker.io/v2/ 2>&1 || echo "DOCKER_HUB_UNREACHABLE"
+      register: docker_hub_check
+      changed_when: false
+      failed_when: false
+
+    - name: Report docker pull/up failure with diagnosis
+      ansible.builtin.fail:
+        msg: |
+          ❌ DOCKER COMPOSE FAILED!
+
+          {% if 'DOCKER_HUB_UNREACHABLE' in docker_hub_check.stdout or 'timeout' in (docker_hub_check.stderr | default('') | lower) %}
+          🌐 NETWORK TIMEOUT - Docker Hub is unreachable
+
+          This usually means:
+          • Docker Hub / GitHub infrastructure is overloaded
+          • Network connectivity issues on this device
+          • ISP routing problems
+
+          → Wait a few hours and re-run the workflow
+          → Or manually run: docker compose pull && docker compose up -d
+          {% else %}
+          🔍 Docker Hub is reachable - check for other issues:
+          • Invalid image tag?
+          • Disk space issue?
+          • Docker daemon problem?
+
+          Check logs: journalctl -u docker --since "10 minutes ago"
+          {% endif %}
   tags: [ha_update, containers_update]
