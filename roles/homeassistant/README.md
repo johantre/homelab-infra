@@ -123,7 +123,7 @@ The Solar dashboard monitors the automated battery charging system.
 | **Should Charge Tonight** | Calculated binary sensor: `forecast < 12.29 kWh` |
 | **Allow Grid Charging** | Actual inverter switch (controlled by automation) |
 | **Last Decision** | What the automation decided: `charge` or `skip` |
-| **Decision Date** | When that decision was made |
+| **Decision For Date** | The date this charging decision applies to (tomorrow) |
 | **Logged Forecast** | Forecast at decision time (for validation) |
 | **Logged Actual** | Actual production logged next day |
 
