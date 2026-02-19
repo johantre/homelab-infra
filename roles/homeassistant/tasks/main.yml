@@ -143,7 +143,7 @@
 - name: Sync repo locally (ha group)
   ansible.builtin.command: >
     rsync -a --delete --no-owner --no-group --no-perms --omit-dir-times
-           --exclude=".storage/backups/" --exclude="deps/"
+           --exclude=".storage/" --exclude="deps/" --exclude="**.db*" --exclude="*.log*"
            {{ lookup('env', 'HOME') }}/homelab/config/homeassistant/
            {{ ha_config_dir }}/
   when: "'ha' in group_names"

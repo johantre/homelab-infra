@@ -159,28 +159,29 @@ jobs:
 
           echo "═══════════════════════════════════════════════════════════════════"
           if [[ "$MAINTENANCE_MODE" == "true" ]]; then
-            echo "🔧 MAINTENANCE MODE - preserving .storage/"
+            echo "🔧 MAINTENANCE MODE - preserving runtime state"
           else
-            echo "🔄 DISASTER RECOVERY MODE - full cleanup"
+            echo "🔄 DISASTER RECOVERY MODE - full cleanup (backup will restore)"
           fi
           echo "═══════════════════════════════════════════════════════════════════"
 
-          # Stack directory can always be cleaned (just docker-compose files)
-          if [[ -d "$HOME/homelab/target/ha-stack-ansible" ]]; then
-            echo "Removing ha-stack-ansible..."
-            sudo rm -rf "$HOME/homelab/target/ha-stack-ansible"
-            echo "✅ Removed ha-stack-ansible directory"
-          fi
-
-          # Config directory: only clean in DR mode!
           if [[ "$MAINTENANCE_MODE" != "true" ]]; then
+            # DR MODE: Full cleanup - backup restore will repopulate
+            if [[ -d "$HOME/homelab/target/ha-stack-ansible" ]]; then
+              echo "Removing ha-stack-ansible (DR mode)..."
+              sudo rm -rf "$HOME/homelab/target/ha-stack-ansible"
+              echo "✅ Removed ha-stack-ansible"
+            fi
+
             if [[ -d "$HOME/homelab/target/homeassistant-ansible" ]]; then
               echo "Removing homeassistant-ansible (DR mode)..."
               sudo rm -rf "$HOME/homelab/target/homeassistant-ansible"
-              echo "✅ Removed homeassistant-ansible directory"
+              echo "✅ Removed homeassistant-ansible"
             fi
           else
-            echo "ℹ️  Keeping homeassistant-ansible/.storage/ intact (maintenance mode)"
+            # MAINTENANCE MODE: Preserve everything, Ansible rsync will update config only
+            echo "ℹ️  Keeping ha-stack-ansible/ intact (version lock, compose)"
+            echo "ℹ️  Keeping homeassistant-ansible/ intact (.storage, database)"
           fi
 
           echo "✅ Cleanup complete"
