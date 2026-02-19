@@ -162,13 +162,23 @@ jobs:
         if: steps.check_flag.outputs.should_sync == 'true' && steps.conflict.outputs.conflict == 'true'
         run: exit 1
 
+      - name: Setup SSH for rsync
+        if: steps.check_flag.outputs.should_sync == 'true' && steps.conflict.outputs.conflict != 'true'
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIV_KEY_B64 }}" | base64 -d > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H ${{ steps.config.outputs.source_host }} >> ~/.ssh/known_hosts 2>/dev/null
+          echo "✅ SSH configured"
+
       - name: Rsync from device
         if: steps.check_flag.outputs.should_sync == 'true' && steps.conflict.outputs.conflict != 'true'
         working-directory: config-repo
         run: |
           mkdir -p "${{ steps.config.outputs.target_folder }}"
 
-          eval rsync -avz --delete \
+          rsync -avz --delete \
+            -e "ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no" \
             ${{ steps.config.outputs.exclude_args }} \
             "${{ steps.config.outputs.source_user }}@${{ steps.config.outputs.source_host }}:${{ steps.config.outputs.source_path }}" \
             "${{ steps.config.outputs.target_folder }}/"
@@ -243,3 +253,9 @@ jobs:
           echo "| Conflict | ${{ steps.conflict.outputs.conflict || 'n/a' }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Changes | ${{ steps.changes.outputs.changed_count || '0' }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Status | ${{ job.status }} |" >> $GITHUB_STEP_SUMMARY
+
+      - name: Cleanup SSH key
+        if: always()
+        run: |
+          rm -f ~/.ssh/id_ed25519
+          echo "✅ SSH key cleaned up"
