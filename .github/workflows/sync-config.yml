@@ -62,11 +62,32 @@ jobs:
           fi
 
           # Check HA input_boolean.git_sync_needed
-          RESPONSE=$(curl -s -X GET "$HA_URL/api/states/input_boolean.git_sync_needed" \
+          echo "🔍 Checking HA API at $HA_URL..."
+          HTTP_CODE=$(curl -s -o /tmp/ha_response.json -w "%{http_code}" \
+            -X GET "$HA_URL/api/states/input_boolean.git_sync_needed" \
             -H "Authorization: Bearer ${{ secrets.HA_LONG_LIVED_TOKEN_GH_ACTIONS_GIT_SYNC }}" \
-            -H "Content-Type: application/json" 2>/dev/null || echo '{"state": "unknown"}')
+            -H "Content-Type: application/json")
 
-          STATE=$(echo "$RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('state', 'unknown'))" 2>/dev/null || echo "unknown")
+          echo "📋 HTTP response code: $HTTP_CODE"
+
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "::error::HA API returned HTTP $HTTP_CODE"
+            echo ""
+            echo "Response body:"
+            cat /tmp/ha_response.json 2>/dev/null || echo "(empty)"
+            echo ""
+            echo "❌ FATAL: Cannot check git_sync_needed flag!"
+            echo ""
+            echo "Possible causes:"
+            echo "  - HA is down"
+            echo "  - Token HA_LONG_LIVED_TOKEN_GH_ACTIONS_GIT_SYNC is invalid/expired"
+            echo "  - Network issue"
+            echo ""
+            echo "Fix the issue, or use skip_check=true to bypass (manual override)"
+            exit 1
+          fi
+
+          STATE=$(cat /tmp/ha_response.json | python3 -c "import sys,json; print(json.load(sys.stdin).get('state', 'unknown'))" 2>/dev/null || echo "unknown")
 
           echo "📋 git_sync_needed state: $STATE"
 
@@ -74,7 +95,7 @@ jobs:
             echo "✅ Sync needed - proceeding"
             echo "should_sync=true" >> $GITHUB_OUTPUT
           else
-            echo "⏭️ No sync needed - skipping"
+            echo "⏭️ No sync needed (state=$STATE) - skipping"
             echo "should_sync=false" >> $GITHUB_OUTPUT
           fi
 
