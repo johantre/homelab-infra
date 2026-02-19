@@ -79,17 +79,31 @@ Target host:
 
 ## Config Sync Flow
 
-```
-Git (homelab-config)  ←──────────────────→  PROD (target host)
-        │                                         │
-        │  Maintenance Deploy                     │  Sync Workflow
-        │  (Git → PROD)                          │  (PROD → Git)
-        │                                         │
-        └─────────────────────────────────────────┘
+```mermaid
+flowchart LR
+    subgraph GitHub
+        Git[(homelab-config)]
+    end
+
+    subgraph PROD[Target Host]
+        YAML[YAML Config]
+        Storage[.storage/]
+    end
+
+    subgraph Backup
+        BK[(Backup)]
+    end
+
+    Git -->|Maintenance Deploy| YAML
+    YAML -->|Sync Workflow| Git
+    Storage -->|Backup| BK
+    BK -->|DR Restore| Storage
 ```
 
-- **YAML files**: Bidirectional sync (Git ↔ PROD)
-- **`.storage/`**: Backup only (not in Git)
+| Content | Git | Backup |
+|---------|-----|--------|
+| YAML files (configuration.yaml, automations.yaml, etc.) | Bidirectional sync | Included |
+| `.storage/` (runtime state, UI config) | Excluded | Protected |
 
 ---
 
