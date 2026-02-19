@@ -155,21 +155,35 @@ jobs:
 
       - name: Clean up existing deployment
         run: |
-          echo "🧹 Cleaning up existing Home Assistant data..."
-          
+          MAINTENANCE_MODE="${{ github.event.inputs.maintenance_mode || 'true' }}"
+
+          echo "═══════════════════════════════════════════════════════════════════"
+          if [[ "$MAINTENANCE_MODE" == "true" ]]; then
+            echo "🔧 MAINTENANCE MODE - preserving .storage/"
+          else
+            echo "🔄 DISASTER RECOVERY MODE - full cleanup"
+          fi
+          echo "═══════════════════════════════════════════════════════════════════"
+
+          # Stack directory can always be cleaned (just docker-compose files)
           if [[ -d "$HOME/homelab/target/ha-stack-ansible" ]]; then
-            echo "Removing ha-stack-ansible (may contain root-owned files)..."
+            echo "Removing ha-stack-ansible..."
             sudo rm -rf "$HOME/homelab/target/ha-stack-ansible"
             echo "✅ Removed ha-stack-ansible directory"
           fi
-          
-          if [[ -d "$HOME/homelab/target/homeassistant-ansible" ]]; then
-            echo "Removing homeassistant-ansible..."
-            sudo rm -rf "$HOME/homelab/target/homeassistant-ansible"
-            echo "✅ Removed homeassistant-ansible directory"
+
+          # Config directory: only clean in DR mode!
+          if [[ "$MAINTENANCE_MODE" != "true" ]]; then
+            if [[ -d "$HOME/homelab/target/homeassistant-ansible" ]]; then
+              echo "Removing homeassistant-ansible (DR mode)..."
+              sudo rm -rf "$HOME/homelab/target/homeassistant-ansible"
+              echo "✅ Removed homeassistant-ansible directory"
+            fi
+          else
+            echo "ℹ️  Keeping homeassistant-ansible/.storage/ intact (maintenance mode)"
           fi
-          
-          echo "✅ Cleanup complete - ready for fresh deployment"
+
+          echo "✅ Cleanup complete"
 
       - name: Deploy Home Assistant with Ansible
         env:
