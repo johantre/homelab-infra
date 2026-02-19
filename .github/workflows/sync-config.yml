@@ -128,21 +128,32 @@ jobs:
           print(f"   Target: {dev_config['target_folder']}/")
           EOF
 
+      - name: Setup SSH
+        if: steps.check_flag.outputs.should_sync == 'true'
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIV_KEY_B64 }}" | base64 -d > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H ${{ steps.config.outputs.source_host }} >> ~/.ssh/known_hosts 2>/dev/null
+          echo "✅ SSH configured"
+
       - name: Check for conflicts
         if: steps.check_flag.outputs.should_sync == 'true'
         id: conflict
-        working-directory: config-repo
         run: |
-          git fetch origin main
-          BEHIND=$(git rev-list HEAD..origin/main --count 2>/dev/null || echo "0")
+          # Check on PROD device if Git has commits not yet deployed
+          BEHIND=$(ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no \
+            ${{ steps.config.outputs.source_user }}@${{ steps.config.outputs.source_host }} \
+            "cd ~/homelab/config && git fetch origin main 2>/dev/null && git rev-list HEAD..origin/main --count 2>/dev/null || echo 0")
+
+          echo "📋 Commits in Git not yet deployed: $BEHIND"
 
           if [ "$BEHIND" -gt 0 ] && [ "${{ steps.device.outputs.force }}" != "true" ]; then
             echo "conflict=true" >> $GITHUB_OUTPUT
-            echo "::error::CONFLICT: GitHub has $BEHIND commits not yet on PROD!"
+            echo "::error::CONFLICT: GitHub has $BEHIND commits not yet deployed to PROD!"
             echo "::error::Deploy those changes first, or use force=true"
           else
             echo "conflict=false" >> $GITHUB_OUTPUT
-            git pull --ff-only origin main || true
           fi
 
       - name: Notify HA - conflict
@@ -161,15 +172,6 @@ jobs:
       - name: Abort on conflict
         if: steps.check_flag.outputs.should_sync == 'true' && steps.conflict.outputs.conflict == 'true'
         run: exit 1
-
-      - name: Setup SSH for rsync
-        if: steps.check_flag.outputs.should_sync == 'true' && steps.conflict.outputs.conflict != 'true'
-        run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.SSH_PRIV_KEY_B64 }}" | base64 -d > ~/.ssh/id_ed25519
-          chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan -H ${{ steps.config.outputs.source_host }} >> ~/.ssh/known_hosts 2>/dev/null
-          echo "✅ SSH configured"
 
       - name: Rsync from device
         if: steps.check_flag.outputs.should_sync == 'true' && steps.conflict.outputs.conflict != 'true'
