@@ -283,23 +283,35 @@
 # ============================================================================
 # DISASTER RECOVERY LOGIC
 # Priority: Local backup > Seedbox > Bootstrap (fresh install)
+#
+# SKIP in maintenance mode: When maintenance_mode=true, we only deploy config
+# from Git and leave runtime state (.storage/, database) untouched.
 # ============================================================================
 
-# Check for local backups FIRST
+- name: Show deployment mode
+  ansible.builtin.debug:
+    msg: "{{ '🔧 MAINTENANCE MODE - skipping backup restore, config from Git only' if maintenance_mode | default(false) else '🔄 DISASTER RECOVERY MODE - will restore runtime state from backup' }}"
+  when: "'ha_target' in group_names"
+
+# Check for local backups FIRST (skip in maintenance mode)
 - name: Check for backups in native backup dir
   ansible.builtin.find:
     paths: "{{ ha_native_backup_dir }}"
     patterns: "*.tar"
   register: available_backups
-  when: "'ha_target' in group_names"
+  when:
+    - "'ha_target' in group_names"
+    - not maintenance_mode | default(false)
 
 # Set flag to track if restore was successful
 - name: Initialize restore status
   ansible.builtin.set_fact:
     restore_completed: false
-  when: "'ha_target' in group_names"
+  when:
+    - "'ha_target' in group_names"
+    - not maintenance_mode | default(false)
 
-# PATH 1: Local backup found → restore from backup (contains auth)
+# PATH 1: Local backup found → restore from backup (runtime state only)
 - name: Restore from local backup
   block:
     - include_tasks: backup-restore.yml
@@ -312,6 +324,7 @@
         msg: "⚠️ Local backup restore failed, attempting seedbox restore"
   when:
     - "'ha_target' in group_names"
+    - not maintenance_mode | default(false)
     - available_backups.matched > 0
 
 # PATH 2: No local backup OR local backup failed → try seedbox
@@ -325,6 +338,7 @@
       when: seedbox_found | default(false)
   when:
     - "'ha_target' in group_names"
+    - not maintenance_mode | default(false)
     - not restore_completed | default(false)
 
 # PATH 3: All restores failed → bootstrap fresh install (create first user)
@@ -332,12 +346,16 @@
   import_tasks: bootstrap-auth.yml
   when:
     - "'ha_target' in group_names"
+    - not maintenance_mode | default(false)
     - ha_bootstrap_enable | default(true)
     - not restore_completed | default(false)
   tags: [ha_bootstrap]
 
 # Summary of what happened
-- name: Disaster recovery summary
+- name: Deployment summary
   ansible.builtin.debug:
-    msg: "{{ '✅ Restore completed successfully' if restore_completed | default(false) else '🆕 Fresh install - bootstrap ran' }}"
+    msg: >-
+      {{ '🔧 Maintenance deploy completed - config synced from Git'
+         if maintenance_mode | default(false)
+         else ('✅ DR restore completed successfully' if restore_completed | default(false) else '🆕 Fresh install - bootstrap ran') }}
   when: "'ha_target' in group_names"

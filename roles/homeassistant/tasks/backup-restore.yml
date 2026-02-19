@@ -1,7 +1,10 @@
 ---
 # Backup restore - decrypt and restore HA backup from native backup directory
 # Uses hassio-tar.sh for proper SecureTar decryption
-# CRITICAL: Uses 'data/.' instead of 'data/*' to copy hidden directories like .storage
+#
+# IMPORTANT: Only restores runtime state (.storage/ and database files).
+# Config files (configuration.yaml, automations.yaml, etc.) come from Git.
+# This separation ensures Git is the source of truth for config-as-code.
 
 - name: Install backup restore dependencies
   ansible.builtin.apt:
@@ -126,18 +129,55 @@
       ansible.builtin.debug:
         msg: "{{ safety_backup.stdout }}"
 
-    - name: Clear existing config directory (except backups)
-      ansible.builtin.shell: |
-        find "{{ ha_config_dir }}" -mindepth 1 -maxdepth 1 ! -name 'backups' -exec rm -rf {} +
-      changed_when: true
+    # Only clear runtime state directories - config files are managed by Git
+    - name: Clear existing .storage directory (will be restored from backup)
+      ansible.builtin.file:
+        path: "{{ ha_config_dir }}/.storage"
+        state: absent
+      become: true
 
-    # CRITICAL FIX: Use 'data/.' instead of 'data/*' to copy hidden directories
-    # The glob '*' does NOT match directories starting with '.' like .storage
-    - name: Restore data from backup to config directory
+    # Restore only runtime state from backup:
+    # - .storage/ (auth, integrations, entity registry, etc.)
+    # - *.db files (history database)
+    # Config files (configuration.yaml, automations.yaml, etc.) are NOT restored
+    # because Git is the source of truth for config-as-code
+    - name: Restore .storage from backup
       ansible.builtin.shell: |
-        cp -r /tmp/ha-backup-restore/data/. "{{ ha_config_dir }}/"
-      register: copy_output
-      changed_when: true
+        if [ -d /tmp/ha-backup-restore/data/.storage ]; then
+          cp -r /tmp/ha-backup-restore/data/.storage "{{ ha_config_dir }}/"
+          echo "✅ .storage/ restored"
+        else
+          echo "⚠️ No .storage/ in backup"
+        fi
+      register: storage_restore
+      changed_when: "'restored' in storage_restore.stdout"
+
+    - name: Show .storage restore result
+      ansible.builtin.debug:
+        msg: "{{ storage_restore.stdout }}"
+
+    - name: Restore database files from backup
+      ansible.builtin.shell: |
+        cd /tmp/ha-backup-restore/data
+        RESTORED=0
+        for dbfile in *.db *.db-shm *.db-wal; do
+          if [ -f "$dbfile" ]; then
+            cp "$dbfile" "{{ ha_config_dir }}/"
+            echo "✅ Restored: $dbfile"
+            RESTORED=$((RESTORED + 1))
+          fi
+        done
+        if [ $RESTORED -eq 0 ]; then
+          echo "ℹ️ No database files found in backup"
+        else
+          echo "✅ Restored $RESTORED database file(s)"
+        fi
+      register: db_restore
+      changed_when: "'Restored:' in db_restore.stdout"
+
+    - name: Show database restore result
+      ansible.builtin.debug:
+        msg: "{{ db_restore.stdout_lines }}"
 
     - name: Fix ownership of restored config
       ansible.builtin.file:
@@ -169,6 +209,8 @@
           - "📦 Source: {{ latest_backup.path | basename }}"
           - "📂 Target: {{ ha_config_dir }}"
           - "🔐 Decrypted with HA_BACKUP_ENCRYPT_KEY + hassio-tar.sh"
+          - "📁 Restored: .storage/ (runtime state) + database files (history)"
+          - "📝 Config files: NOT restored (managed by Git)"
           - "✅ HA container restarted and responding"
 
   always:

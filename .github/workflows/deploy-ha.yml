@@ -3,6 +3,14 @@ name: Deploy Home Assistant
 on:
   workflow_dispatch:
     inputs:
+      maintenance_mode:
+        description: 'Maintenance mode (skip backup restore, config from Git only)'
+        required: false
+        default: 'true'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
       ha_version_override:
         description: 'HA emergency version override'
         required: false
@@ -181,10 +189,13 @@ jobs:
           set -o pipefail
           
           # Run Ansible from infra directory
+          # maintenance_mode=true (default): config from Git only, skip backup restore
+          # maintenance_mode=false: disaster recovery, restore runtime state from backup
           ansible-playbook \
             -i inventories/ha_target_local.ini \
             site.yml \
             -l ha_target \
+            -e maintenance_mode=${{ github.event.inputs.maintenance_mode || 'true' }} \
             -e ha_version_override=${{ github.event.inputs.ha_version_override }} \
             -vv \
             2>&1 | tee ansible-deploy.log
