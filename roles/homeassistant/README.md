@@ -59,6 +59,8 @@ ansible-playbook site.yml -i inventories/ha_target_local.ini -l ha_target -e mai
 | `enable_esphome` | `true` | Enable ESPHome |
 | `enable_ssh_terminal` | `true` | Enable SSH access |
 | `enable_samba` | `true` | Enable Samba shares |
+| `enable_argon_fan` | `true` | Enable Argon One case fan control |
+| `argon_fan_curve_default` | See below | Fan speed curve (temp=speed%) |
 
 ## Directory Structure
 
@@ -228,3 +230,33 @@ ansible-playbook site.yml \
 | SSH | `ssh -p 2222 <target-ip>` | 2222 |
 
 > Replace `<target-ip>` with your host's IP address (e.g., from `ansible_host` in your inventory).
+
+---
+
+## Argon One Fan Configuration
+
+When `enable_argon_fan: true`, the role installs and configures the Argon One case fan daemon.
+
+**Default fan curve:**
+
+| Temp | Fan Speed |
+|------|-----------|
+| < 45°C | Off |
+| 45°C | 25% |
+| 55°C | 40% |
+| 65°C | 70% |
+| 75°C | 100% |
+
+> Note: The Argon One hardware has a minimum effective fan speed of 25%.
+
+**Custom fan curve:**
+
+Override in `group_vars/all.yml` or via extra-vars:
+
+```yaml
+argon_fan_curve_default: |
+  40=25
+  50=50
+  60=75
+  70=100
+```

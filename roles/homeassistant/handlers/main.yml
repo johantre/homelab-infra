@@ -1,0 +1,8 @@
+---
+# Handlers for homeassistant role
+
+- name: Restart argononed
+  ansible.builtin.systemd:
+    name: argononed
+    state: restarted
+  become: true

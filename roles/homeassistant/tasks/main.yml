@@ -123,6 +123,13 @@
   ansible.builtin.include_tasks: docker-install.yml
   when: "'ha_target' in group_names"
 
+# Argon One case fan configuration (optional)
+- name: Include Argon One fan setup
+  ansible.builtin.include_tasks: argon-fan.yml
+  when:
+    - "'ha_target' in group_names"
+    - enable_argon_fan | default(false) | bool
+
 - name: Sync repo from controller → target (ha_target group)
   ansible.posix.synchronize:
     src: "{{ lookup('env', 'HOME') }}/homelab/config/homeassistant/"

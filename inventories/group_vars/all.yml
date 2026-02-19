@@ -58,3 +58,11 @@ service_data_dirs:
 tz: "Europe/Brussels"
 enable_target_passwordless_sudo: true
 manage_docker_group: false
+
+# --- Argon One Case Fan (Raspberry Pi)
+enable_argon_fan: true
+argon_fan_curve_default: |
+  45=25
+  55=40
+  65=70
+  75=100
