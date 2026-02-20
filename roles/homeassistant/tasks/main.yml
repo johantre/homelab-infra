@@ -305,7 +305,7 @@
 
 - name: Show deployment mode details
   ansible.builtin.debug:
-    msg: "{{ '   Skipping backup restore, config from Git only' if (maintenance_mode | default(false) | bool) else '   Will restore runtime state from backup' }}"
+    msg: "{{ '⏭️ Skipping backup restore, config from Git only' if (maintenance_mode | default(false) | bool) else '   Will restore runtime state from backup' }}"
   when: "'ha_target' in group_names"
 
 - name: "═══════════════════════════════════════════════════════════════════"

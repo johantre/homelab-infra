@@ -12,7 +12,7 @@
 
 - name: Skip Argon setup on non-Pi hardware
   ansible.builtin.debug:
-    msg: "Skipping Argon One setup - not a Raspberry Pi (arch: {{ ansible_architecture }})"
+    msg: "⏭️ Skipping Argon One setup - not a Raspberry Pi (arch: {{ ansible_architecture }})"
   when: not is_raspberry_pi
 
 - name: Check if argononed is already installed

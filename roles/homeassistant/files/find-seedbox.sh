@@ -70,7 +70,7 @@ LARGEST_SIZE=0
 for IP in $IPS; do
     # Skip if this is one of the excluded IPs (target itself)
     if [ -n "${EXCLUDE_MAP[$IP]}" ]; then
-        echo "  ⏭️  Skipping $IP (target itself)"
+        echo "⏭️  Skipping $IP (target itself)"
         continue
     fi
 
