@@ -46,7 +46,7 @@ fi
 echo "✅ All dependencies found"
 echo ""
 
-echo "🔎 Scanning $NETWORK for HA instances..."
+echo "Scanning $NETWORK for HA instances..."
 IPS=$(nmap -p $HA_PORT --open $NETWORK -oG - 2>/dev/null | grep "$HA_PORT/open" | awk '{print $2}')
 
 if [ -z "$IPS" ]; then
@@ -74,7 +74,7 @@ for IP in $IPS; do
         continue
     fi
 
-    echo "🔍 Checking $IP..."
+    echo "Checking $IP..."
 
     FOUND_USER=""
     # Try to find working SSH user
