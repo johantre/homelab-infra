@@ -133,51 +133,27 @@
     - name: ACTUAL SYNC - Transfer .storage from Seedbox to Target
       ansible.builtin.shell: |
         set -e
-        set -o pipefail
-        # SSH to seedbox, get tar, extract locally (runner = target in self-hosted setup)
+        # 1. Pak in op Seedbox -> 2. Pipe door laptop -> 3. Pak uit op Target Server
         ssh -o StrictHostKeyChecking=no {{ seedbox_user }}@{{ seedbox_ip }} \
           "tar -czf - --exclude='./hassio' --exclude='./backup' -C {{ seedbox_storage_path }} ." | \
-        tar -xzf - -C {{ ha_config_dir }}/.storage/
-        echo ".storage transferred: $(du -sh {{ ha_config_dir }}/.storage/ | cut -f1)"
-      changed_when: true
-      when: seedbox_found
-
-    - name: Check if database exists on seedbox
-      ansible.builtin.shell: |
-        ssh -o StrictHostKeyChecking=no {{ seedbox_user }}@{{ seedbox_ip }} \
-          "test -f {{ seedbox_config_path }}/home-assistant_v2.db && stat --printf='%s' {{ seedbox_config_path }}/home-assistant_v2.db"
+        ssh -o StrictHostKeyChecking=no {{ ansible_user }}@{{ ansible_host }} \
+          "tar -xzf - -C {{ ha_config_dir }}/.storage/"
       delegate_to: localhost
-      register: seedbox_db_check
-      failed_when: false
-      changed_when: false
-      when: seedbox_found
-
-    - name: Show seedbox database status
-      ansible.builtin.debug:
-        msg: "{{ 'Seedbox database: ' + (seedbox_db_check.stdout | int | filesizeformat) if seedbox_db_check.rc == 0 else 'No database found on seedbox' }}"
+      changed_when: true
       when: seedbox_found
 
     - name: ACTUAL SYNC - Transfer database from Seedbox to Target
       ansible.builtin.shell: |
         set -e
-        set -o pipefail
         # Transfer HA database (contains historical data, statistics)
-        # When running locally (self-hosted runner), extract directly without second SSH
         ssh -o StrictHostKeyChecking=no {{ seedbox_user }}@{{ seedbox_ip }} \
-          "tar -czf - -C {{ seedbox_config_path }} home-assistant_v2.db" | \
-        tar -xzf - -C {{ ha_config_dir }}/
-        ls -la {{ ha_config_dir }}/home-assistant_v2.db
-        echo "Database transferred successfully"
-      register: db_transfer_result
-      when:
-        - seedbox_found
-        - seedbox_db_check.rc == 0
-      failed_when: false
-
-    - name: Show database transfer result
-      ansible.builtin.debug:
-        msg: "{{ db_transfer_result.stdout_lines | default(['Database transfer skipped - not found on seedbox']) }}"
+          "tar -czf - -C {{ seedbox_config_path }} home-assistant_v2.db 2>/dev/null || true" | \
+        ssh -o StrictHostKeyChecking=no {{ ansible_user }}@{{ ansible_host }} \
+          "tar -xzf - -C {{ ha_config_dir }}/ 2>/dev/null || true"
+      delegate_to: localhost
+      changed_when: true
       when: seedbox_found
+      ignore_errors: true  # Database might not exist on all seedboxes
 
     - name: Surgical cleanup via local Python script
       ansible.builtin.script: "clean_ha.py {{ ha_config_dir }}"
