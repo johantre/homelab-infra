@@ -1817,6 +1817,10 @@ README_EOF
     echo -e "  ${BLUE}5.${NC} Post-install setup runs on first boot"
     echo -e "  ${BLUE}6.${NC} Self-destruct removes sensitive files"
     echo
+    echo -e "${YELLOW}NETWORK NOTE:${NC}"
+    echo "  Ensure ethernet cable is connected during installation."
+    echo "  The installer may fail if no network is available."
+    echo
     echo -e "${RED}SECURITY NOTE:${NC}"
     echo "  autoinstall.yaml contains WiFi password!"
     echo "  setup-machine.sh contains SSH key and GitHub PAT!"
@@ -2107,6 +2111,10 @@ MOTD_EOF
         echo -e "  ${BLUE}11.${NC} Setup runs automatically (check: journalctl -f)"
     fi
     echo -e "  ${BLUE}12.${NC} SSH: ssh ${UBUNTU_USER}@${HOSTNAME}.local"
+    echo
+    echo -e "${YELLOW}NETWORK NOTE:${NC}"
+    echo "  Ensure ethernet cable is connected during firstboot setup."
+    echo "  GitHub runner registration requires network access."
     echo
 
     cd /

@@ -2,15 +2,22 @@
 # Find seedbox IP using nmap + .storage size check (through positional arguments)
 NETWORK="$1"
 HA_PORT="$2"
-EXCLUDE_IP="$3"  # Optional: IP to exclude (usually target itself)
+shift 2
+EXCLUDE_IPS="$*"  # Optional: IPs to exclude (space-separated, usually all target IPs)
 SSH_USERS="ubuntu root"  # Try both
 
 if [ -z "$NETWORK" ] || [ -z "$HA_PORT" ]; then
     echo "❌ ERROR: Both NETWORK and HA_PORT are required!"
-    echo "Usage: $0 <NETWORK> <HA_PORT> [EXCLUDE_IP]"
-    echo "Example: $0 192.168.3.0/24 8123 192.168.3.33"
+    echo "Usage: $0 <NETWORK> <HA_PORT> [EXCLUDE_IP...]"
+    echo "Example: $0 192.168.3.0/24 8123 192.168.3.26 192.168.3.33"
     exit 1
 fi
+
+# Convert exclude IPs to array for easy checking
+declare -A EXCLUDE_MAP
+for ip in $EXCLUDE_IPS; do
+    EXCLUDE_MAP[$ip]=1
+done
 
 # Auto-detect SSH key (runner has deployed key, Linux box uses agent forwarding)
 if [ -f ~/.ssh/id_ed25519_seedbox_priv ]; then
@@ -61,8 +68,8 @@ LARGEST_IP=""
 LARGEST_SIZE=0
 
 for IP in $IPS; do
-    # Skip if this is the excluded IP (target itself)
-    if [ -n "$EXCLUDE_IP" ] && [ "$IP" = "$EXCLUDE_IP" ]; then
+    # Skip if this is one of the excluded IPs (target itself)
+    if [ -n "${EXCLUDE_MAP[$IP]}" ]; then
         echo "  ⏭️  Skipping $IP (target itself)"
         continue
     fi
@@ -126,7 +133,7 @@ else
     echo ""
     echo "Found HA instances but none had accessible .storage:"
     for IP in $IPS; do
-        if [ -n "$EXCLUDE_IP" ] && [ "$IP" = "$EXCLUDE_IP" ]; then
+        if [ -n "${EXCLUDE_MAP[$IP]}" ]; then
             continue
         fi
         echo "  - $IP (check SSH access and .storage location)"

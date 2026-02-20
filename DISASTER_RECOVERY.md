@@ -26,7 +26,7 @@ This document covers the following disaster scenarios:
 Make sure you have the following:
 
 - [ ] ✅ New target hardware (laptop/Pi/server)
-- [ ] ✅ 2x USB sticks (8GB+ and 1GB+)
+- [ ] ✅ USB stick (8GB+)
 - [ ] ✅ Controller node (other laptop with Ansible)
 - [ ] ✅ GitHub repository access
 - [ ] ✅ `.env` file with secrets (backup of this!)
@@ -94,11 +94,9 @@ During disaster recovery, the playbook:
 ```mermaid
 graph LR
     A[Controller] --> B[Run Script]
-    B --> C[USB 1: Ubuntu ISO]
-    B --> D[USB 2: Setup Script]
-    
+    B --> C[USB: Ventoy + ISO + Setup]
+
     style C fill:#2196f3
-    style D fill:#4caf50
 ```
 
 **On your Controller node:**
@@ -107,21 +105,22 @@ graph LR
 cd ~/homelab/infra/boot
 
 # Run USB creator script:
-sudo ./create-two-usb-setup.sh
+sudo ./create-install-usb.sh
 
 # Wizard will ask:
 # 1. Architecture (x86_64 or ARM64)
-# 2. Ubuntu version (LTS or latest)
-# 3. Hostname
-# 4. SSH public key
-# 5. GitHub username
-# 6. GitHub repository
-# 7. GitHub PAT (Personal Access Token)
+# 2. Hostname
+# 3. GitHub username
+# 4. GitHub repository
+# 5. GitHub PAT (Personal Access Token)
+# 6. WiFi credentials (optional)
 ```
 
-**Result:** 2 USB sticks ready:
-- **USB 1:** Bootable Ubuntu Desktop ISO
-- **USB 2:** Setup script with self-destruct
+**Result:** Single bootable USB with:
+- **Ventoy** multiboot loader (x86) or bootable image (Pi4)
+- **Ubuntu ISO** (x86) or preinstalled image (Pi4)
+- **Autoinstall config** with embedded setup script
+- **Setup script** runs automatically on first boot
 
 ---
 
@@ -129,75 +128,66 @@ sudo ./create-two-usb-setup.sh
 
 ```mermaid
 sequenceDiagram
-    participant USB1 as USB 1<br/>(Ubuntu ISO)
+    participant USB as USB<br/>(Ventoy + ISO)
     participant Target as Target Hardware
-    participant USB2 as USB 2<br/>(Setup Script)
-    
-    USB1->>Target: Boot
-    Target->>Target: Manual Ubuntu Install
-    Note over Target: Create user<br/>Configure network<br/>Install to disk
-    Target->>Target: Reboot
-    USB2->>Target: Insert USB 2
-    Target->>Target: Run setup-machine.sh
-    Note over Target: Configure hostname<br/>SSH keys<br/>GitHub runner<br/>💣 Self-destruct
+
+    USB->>Target: Boot from USB
+    Target->>Target: Ventoy menu → Select ISO
+    Target->>Target: Autoinstall runs
+    Note over Target: Automated install<br/>User account created<br/>Disk partitioned
+    Target->>Target: Reboot (remove USB)
+    Target->>Target: Firstboot service runs
+    Note over Target: Configure hostname<br/>SSH keys<br/>GitHub runner<br/>WiFi setup
     Target->>Target: Ready for Ansible
 ```
 
+> **NETWORK NOTE (x86 only):** Connect ethernet cable BEFORE booting from USB. The x86 autoinstall may fail if no network is available during installation. Pi4 works offline.
+
 **Steps:**
 
-1. **Boot from USB 1:**
+1. **Boot from USB:**
    ```bash
-   # Insert USB 1 into Target node
+   # Insert USB into Target node
    # Boot from USB (F12/F2 for boot menu)
    # Select USB drive
    ```
 
-2. **Install Ubuntu:**
-   - Select language
-   - Choose "Install Ubuntu"
-   - Select keyboard layout
-   - Connect to WiFi/Ethernet
-   - Choose installation type: "Erase disk and install Ubuntu"
-   - Select timezone
-   - **Create user** (any username, you choose password)
+2. **x86: Ventoy Menu:**
+   - Select the Ubuntu ISO
+   - Choose "Try or Install Ubuntu" from GRUB menu
+   - **Autoinstall runs automatically** (no user input needed!)
    - Wait ~10 minutes for installation
-   - Remove USB 1 when prompted
-   - Reboot
+   - System reboots automatically
 
-3. **First Boot:**
-   ```bash
-   # Log in with created user
-   # Verify network: ping 8.8.8.8
-   # Insert USB 2
-   ```
+3. **Pi4: Flash to M.2:**
+   - Login: `ubuntu` / `yourpassword`
+   - Run: `sudo flash-to-m2`
+   - Type `yes` to confirm
+   - Power off, remove USB, reconnect M.2 cable
+   - Boot from M.2
 
-4. **Run Setup Script:**
+4. **First Boot (automatic):**
    ```bash
-   # USB 2 should auto-mount to /media/<username>/SETUP
-   cd /media/<username>/SETUP
-   
-   # Run the setup script:
-   sudo bash setup-machine.sh
-   
-   # Script will:
+   # Firstboot service runs automatically:
    # ✅ Set hostname
    # ✅ Configure SSH key
    # ✅ Enable passwordless sudo
-   # ✅ Install openssh-server
+   # ✅ Configure WiFi (if specified)
    # ✅ Install + register GitHub runner
-   # 💣 Self-destruct (delete itself!)
-   
-   # Wait for "Machine is ready! 🚀"
+   # 💣 Self-destruct (service disables itself)
    ```
 
 5. **Verify Setup:**
    ```bash
+   # SSH to target:
+   ssh ubuntu@<hostname>.local
+
    # Check hostname:
    hostname
-   
-   # Check GitHub runner (on Target node):
+
+   # Check GitHub runner:
    systemctl status actions.runner.*
-   
+
    # Or check on GitHub:
    # https://github.com/{user}/{repo}/settings/actions/runners
    # You should see your Target node listed as "Online"
@@ -403,7 +393,7 @@ ansible-playbook -i inventories/ha_target_remote.ini site.yml -l ha_target -e en
 ### Steps
 
 Same as **Scenario A**, but:
-1. Skip USB 2 setup script (SSH already configured)
+1. Firstboot already ran (SSH already configured)
 2. Manually mount backup volume if needed:
    ```bash
    # On Target node:
@@ -478,8 +468,8 @@ graph TD
     D -->|No| F[Scenario A:<br/>Full Recovery]
     
     C --> G[Ansible Direct]
-    E --> H[Skip USB 2 Script]
-    F --> I[USB 1 + USB 2]
+    E --> H[Skip Firstboot]
+    F --> I[Boot USB + Firstboot]
     
     G --> J{Backup<br/>Available?}
     H --> J
@@ -576,39 +566,37 @@ After successful recovery:
 
 ### USB Script Failed
 
-**Problem:** `create-two-usb-setup.sh` exits with error
+**Problem:** `create-install-usb.sh` exits with error
 
 **Solutions:**
 ```bash
 # Run as root:
-sudo ./create-two-usb-setup.sh
+sudo ./create-install-usb.sh
 
 # Check USB drives detected:
 lsblk
 
-# Verify at least 2 USB drives visible:
+# Verify USB drive visible:
 lsblk | grep -E "sd[b-z]"
-
-# Test mode (skip ISO download):
-sudo ./create-two-usb-setup.sh --test-mode
 ```
 
-### Setup Script Won't Run on Target node
+### Firstboot Script Not Running
 
-**Problem:** Permission denied running `setup-machine.sh`
+**Problem:** Machine boots but setup didn't run
 
 **Solutions:**
 ```bash
-# Make executable:
-chmod +x /media/<username>/SETUP/setup-machine.sh
+# Check firstboot service status:
+systemctl status firstboot-setup.service
 
-# Run with sudo:
-sudo bash /media/<username>/SETUP/setup-machine.sh
+# View logs:
+journalctl -u firstboot-setup.service
 
-# If USB not mounted:
-sudo mkdir /mnt/usb
-sudo mount /dev/sdb1 /mnt/usb
-sudo bash /mnt/usb/setup-machine.sh
+# Manually run if needed (x86):
+sudo bash /opt/setup/setup-machine.sh
+
+# Manually run if needed (Pi4):
+sudo bash /opt/pi4-flash/setup-machine.sh
 ```
 
 ### GitHub Runner Not Showing

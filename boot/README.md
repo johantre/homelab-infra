@@ -56,7 +56,7 @@ PHASE                           NETWORK NEEDED?     WHY?
 ─────────────────────────────────────────────────────────────────────
 USB Creation (this machine)     Yes                 Download ISO, Ventoy
 
-Boot & Install (target)         No *                Everything from ISO
+Boot & Install (target)         Recommended *       x86 installer may need network
 
 Firstboot Script (target)       YES !               GitHub CLI install
                                 ETHERNET            GitHub Runner download
@@ -65,8 +65,8 @@ Firstboot Script (target)       YES !               GitHub CLI install
 After Firstboot                 Optional            WiFi configured by script
 ─────────────────────────────────────────────────────────────────────
 
-* Autoinstall runs offline - no packages downloaded during install
-! CRITICAL: Plug in ethernet BEFORE first boot, or firstboot script fails
+* x86 autoinstall may fail without network. Pi4 works offline.
+! CRITICAL: Plug in ethernet BEFORE starting install to avoid errors
 ```
 
 ## x86 vs Raspberry Pi 4

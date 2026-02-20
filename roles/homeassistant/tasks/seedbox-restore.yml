@@ -34,9 +34,9 @@
         dest: /tmp/find-seedbox.sh
         mode: '0755'
 
-    - name: Discover seedbox on network (exclude self)
+    - name: Discover seedbox on network (exclude all local IPs)
       ansible.builtin.shell: |
-        bash /tmp/find-seedbox.sh {{ ha_seedbox_network }} {{ ha_host_port }} {{ ansible_default_ipv4.address }}
+        bash /tmp/find-seedbox.sh {{ ha_seedbox_network }} {{ ha_host_port }} {{ ansible_all_ipv4_addresses | join(' ') }}
       register: seedbox_discovery
       failed_when: false
       changed_when: false
