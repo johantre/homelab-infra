@@ -237,6 +237,8 @@ ansible-playbook site.yml \
 
 When `enable_argon_fan: true`, the role installs and configures the Argon One case fan daemon.
 
+> **Note:** Only runs on Raspberry Pi (ARM architecture). Automatically skipped on x86/x64.
+
 **Default fan curve:**
 
 | Temp | Fan Speed |

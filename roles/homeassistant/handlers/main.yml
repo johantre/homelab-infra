@@ -6,3 +6,4 @@
     name: argononed
     state: restarted
   become: true
+  when: ansible_architecture in ['aarch64', 'armv7l', 'armv6l']

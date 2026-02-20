@@ -79,8 +79,20 @@
       - enable_code_server is defined
       - enable_esphome is defined
       - enable_samba is defined
+      - enable_argon_fan is defined
       - enable_target_passwordless_sudo is defined
       - ha_bootstrap_enable is defined
+      # Service ports
+      - code_server_port is defined
+      - ssh_port is defined
+      - esphome_port is defined
+      - samba_tcp_445 is defined
+      - samba_tcp_139 is defined
+      # Service data dirs
+      - code_server_data_dir is defined
+      - ssh_data_dir is defined
+      - esphome_data_dir is defined
+      - service_data_dirs is defined
       # Credentials (checked above but verify here too)
       - github_username is defined
       - github_pat is defined
