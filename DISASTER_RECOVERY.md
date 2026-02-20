@@ -50,58 +50,57 @@ The backup encryption key is stored in **two places**:
 
 **This is the key insight:** When you restore from a backup, the encryption key stored inside that backup becomes HA's active key. New backups will then be encrypted with that same key.
 
-### Strategy: Maintain a Fixed Key in GitHub Secrets
-
-You can avoid constantly updating `HA_BACKUP_ENCRYPT_KEY` by ensuring your backups contain the same key that's in Secrets:
+### Backup Key Lifecycle: How Key Recycling Works
 
 ```mermaid
-flowchart TD
-    A["GitHub Secrets<br/>HA_BACKUP_ENCRYPT_KEY = 'fixedKey123'"] --> B["DR Restore"]
-    B --> C["Backup decrypted<br/>(contains 'fixedKey123')"]
-    C --> D["HA .storage restored<br/>(key 'fixedKey123' now active)"]
-    D --> E["New backups created<br/>(encrypted with 'fixedKey123')"]
-    E --> |"Loop closed!"| B
+flowchart TB
+    subgraph OLD["Old HA (before disaster)"]
+        A["HA running with key 'ABC123'"]
+        A --> B["Backup created<br/>📦 contains key 'ABC123'"]
+    end
+
+    subgraph DISASTER["💥 Disaster Strikes"]
+        C["Hardware fails"]
+    end
+
+    subgraph NEW["New HA (after disaster)"]
+        D["Fresh deploy<br/>⚠️ generates NEW random key 'XYZ789'"]
+        D --> E["DR Restore runs"]
+        E --> F["Backup decrypted with 'ABC123'<br/>(from GitHub Secrets)"]
+        F --> G["✅ HA now has key 'ABC123' again!<br/>(restored from backup)"]
+        G --> H["New backups use 'ABC123'"]
+    end
+
+    B --> C
+    C --> D
+    H -.-> |"Key recycled for next DR"| B
 
     style A fill:#4caf50
-    style E fill:#2196f3
+    style D fill:#ff9800
+    style G fill:#4caf50
+    style H fill:#2196f3
 ```
 
-**To set this up:**
+**The magic:** Even though a fresh deploy generates a new random key, the backup restore overwrites it with the key from the backup. This means your `HA_BACKUP_ENCRYPT_KEY` in GitHub Secrets stays valid forever, as long as you always restore from a backup that contains that key.
 
-1. **Set your desired key in HA:**
-   ```
-   HA UI → Settings → System → Backups → ⚙️ → Change encryption key
-   ```
+### One-Time Setup: Lock In Your Fixed Key
 
-2. **Put the SAME key in GitHub Secrets:**
-   ```
-   GitHub → Settings → Secrets → Actions → HA_BACKUP_ENCRYPT_KEY
-   ```
+To ensure your key gets recycled through every DR:
 
-3. **Create a new backup** (this backup now contains your fixed key):
-   ```
-   HA UI → Settings → System → Backups → Create backup
-   ```
+| Step | Action | Why |
+|------|--------|-----|
+| 1 | Get current key from HA:<br/>`Settings → System → Backups → (i) → Encryption key` | This is the key inside your backups |
+| 2 | Store in GitHub Secrets:<br/>`HA_BACKUP_ENCRYPT_KEY = <that key>` | DR playbook uses this to decrypt |
+| 3 | Create a fresh backup:<br/>`Settings → System → Backups → Create backup` | Ensures latest backup has the key |
+| 4 | Delete old backups with different keys:<br/>`sudo rm /mnt/backup/homeassistant/*.tar` | Prevents "Unknown format" errors |
 
-4. **Delete old backups** (they have different keys):
-   ```bash
-   ssh ubuntu@<target>
-   sudo rm /mnt/backup/homeassistant/*.tar
-   # Only keep backups created AFTER step 3
-   ```
-
-### Why Old Backups Must Be Deleted
-
-| Backup | Encrypted with | Matches Secrets key? |
-|--------|----------------|---------------------|
-| Old (before key change) | old random key | ❌ No → "Unknown format" error |
-| New (after key change) | your fixed key | ✅ Yes → Restore works |
+**After this setup:** Every future DR will restore this key, and new backups will contain it. The cycle continues indefinitely.
 
 ### Troubleshooting "Unknown format" Error
 
-This error means key mismatch. Solutions:
+This error means key mismatch between Secrets and backup. Solutions:
 1. **Seedbox restore** - if seedbox is online, .storage is synced directly (no decryption needed)
-2. **Get key from running HA** - Settings → System → Backups → (i) → Encryption key
+2. **Get key from running HA** - Settings → System → Backups → (i) → Encryption key → update Secrets
 3. **Bootstrap** - fresh install without backup restore (`-e ha_bootstrap_enable=true`)
 
 ### Phase 1: USB Preparation (10 minutes)
