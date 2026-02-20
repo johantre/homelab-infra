@@ -145,11 +145,26 @@
     - name: ACTUAL SYNC - Transfer database from Seedbox to Target
       ansible.builtin.shell: |
         set -e
-        # Transfer HA database (contains historical data, statistics)
-        ssh -o StrictHostKeyChecking=no {{ seedbox_user }}@{{ seedbox_ip }} \
-          "tar -czf - -C {{ seedbox_config_path }} home-assistant_v2.db 2>/dev/null || true" | \
-        ssh -o StrictHostKeyChecking=no {{ ansible_user }}@{{ ansible_host }} \
-          "tar -xzf - -C {{ ha_config_dir }}/ 2>/dev/null || true"
+        # Create consistent backup on seedbox using Python sqlite3
+        # WAL checkpoint + backup API ensures no corruption from active writes
+        ssh -o StrictHostKeyChecking=no {{ seedbox_user }}@{{ seedbox_ip }} "python3 -c \"
+        import sqlite3
+        db_path = '{{ seedbox_config_path }}/home-assistant_v2.db'
+        conn = sqlite3.connect(db_path)
+        conn.execute('PRAGMA wal_checkpoint(TRUNCATE)')
+        conn.close()
+        src_conn = sqlite3.connect(db_path)
+        dst_conn = sqlite3.connect('/tmp/ha_seedbox_backup.db')
+        src_conn.backup(dst_conn)
+        dst_conn.close()
+        src_conn.close()
+        \""
+        # Transfer backup and cleanup
+        ssh -o StrictHostKeyChecking=no {{ seedbox_user }}@{{ seedbox_ip }} "cat /tmp/ha_seedbox_backup.db" > {{ ha_config_dir }}/home-assistant_v2.db
+        ssh -o StrictHostKeyChecking=no {{ seedbox_user }}@{{ seedbox_ip }} "rm -f /tmp/ha_seedbox_backup.db"
+        # Remove any stale WAL/SHM files from previous runs
+        rm -f {{ ha_config_dir }}/home-assistant_v2.db-wal {{ ha_config_dir }}/home-assistant_v2.db-shm
+        echo "Database transferred successfully: $(ls -lh {{ ha_config_dir }}/home-assistant_v2.db | awk '{print $5}')"
       delegate_to: localhost
       changed_when: true
       when: seedbox_found
