@@ -188,16 +188,26 @@
         state: directory
       when: seedbox_found
 
+    - name: Check if database was transferred
+      ansible.builtin.stat:
+        path: "{{ ha_config_dir }}/home-assistant_v2.db"
+      register: db_transferred
+      when: seedbox_found
+
+    - name: Fix database ownership
+      ansible.builtin.file:
+        path: "{{ ha_config_dir }}/home-assistant_v2.db"
+        owner: "{{ runtime_uid }}"
+        group: "{{ runtime_gid }}"
+        mode: '0644'
+      when:
+        - seedbox_found
+        - db_transferred.stat.exists | default(false)
+
     - name: Start HA container after .storage sync
       ansible.builtin.shell: |
         sg docker -c 'docker start {{ ha_container_name }}'
       changed_when: true
-      when: seedbox_found
-
-    - name: Check if database was restored
-      ansible.builtin.stat:
-        path: "{{ ha_config_dir }}/home-assistant_v2.db"
-      register: db_stat
       when: seedbox_found
 
     - name: Seedbox restore summary
@@ -206,7 +216,7 @@
           - "✅ Seedbox restore completed!"
           - "Seedbox: {{ seedbox_user }}@{{ seedbox_ip }}"
           - ".storage: {{ seedbox_storage_path }} → {{ ha_config_dir }}/.storage/"
-          - "Database: {{ 'Restored (' + (db_stat.stat.size | filesizeformat) + ')' if db_stat.stat.exists else 'Not found on seedbox' }}"
+          - "Database: {{ 'Restored (' + (db_transferred.stat.size | filesizeformat) + ')' if db_transferred.stat.exists else 'Not found on seedbox' }}"
       when: seedbox_found
 
   always:
