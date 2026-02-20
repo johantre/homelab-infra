@@ -1820,7 +1820,8 @@ README_EOF
     echo -e "${RED}SECURITY NOTE:${NC}"
     echo "  autoinstall.yaml contains WiFi password!"
     echo "  setup-machine.sh contains SSH key and GitHub PAT!"
-    echo "  Both files will self-destruct after first boot."
+    echo "  Both files on the target will self-destruct after first boot."
+    echo "  Both files will STAY on the Install USB."
     echo
     echo -e "${BLUE}Tip: You can add more ISOs to this USB by copying them to the root${NC}"
     echo
