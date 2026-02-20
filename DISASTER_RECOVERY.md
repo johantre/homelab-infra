@@ -35,59 +35,74 @@ Make sure you have the following:
 
 ## 🔐 Backup Encryption Key Management
 
-### Critical: Each Deploy = New Encryption Key
+### How the Backup Key Works
 
-**Every successful HA deployment generates a NEW random backup encryption key.**
+The backup encryption key is stored in **two places**:
+1. **GitHub Secrets** (`HA_BACKUP_ENCRYPT_KEY`) - used by DR playbook to decrypt backups
+2. **Inside HA's .storage** - restored along with the backup!
 
-This means:
-- ✅ Old backups (before deploy) → Encrypted with OLD key
-- ✅ New backups (after deploy) → Encrypted with NEW key
-- ❌ OLD key cannot decrypt NEW backups
-- ❌ NEW key cannot decrypt OLD backups
+### Key Behavior During Deploy vs Restore
 
-### Post-Deploy Checklist
+| Action | Effect on Encryption Key |
+|--------|-------------------------|
+| **Fresh deploy** (no backup restore) | NEW random key generated |
+| **Backup restore** | Key FROM the backup is restored to HA |
 
-After a successful deployment and first backup:
+**This is the key insight:** When you restore from a backup, the encryption key stored inside that backup becomes HA's active key. New backups will then be encrypted with that same key.
 
-1. **Create first backup with new key:**
+### Strategy: Maintain a Fixed Key in GitHub Secrets
+
+You can avoid constantly updating `HA_BACKUP_ENCRYPT_KEY` by ensuring your backups contain the same key that's in Secrets:
+
+```mermaid
+flowchart TD
+    A["GitHub Secrets<br/>HA_BACKUP_ENCRYPT_KEY = 'fixedKey123'"] --> B["DR Restore"]
+    B --> C["Backup decrypted<br/>(contains 'fixedKey123')"]
+    C --> D["HA .storage restored<br/>(key 'fixedKey123' now active)"]
+    D --> E["New backups created<br/>(encrypted with 'fixedKey123')"]
+    E --> |"Loop closed!"| B
+
+    style A fill:#4caf50
+    style E fill:#2196f3
 ```
+
+**To set this up:**
+
+1. **Set your desired key in HA:**
+   ```
+   HA UI → Settings → System → Backups → ⚙️ → Change encryption key
+   ```
+
+2. **Put the SAME key in GitHub Secrets:**
+   ```
+   GitHub → Settings → Secrets → Actions → HA_BACKUP_ENCRYPT_KEY
+   ```
+
+3. **Create a new backup** (this backup now contains your fixed key):
+   ```
    HA UI → Settings → System → Backups → Create backup
-```
+   ```
 
-2. **Update HA_BACKUP_ENCRYPT_KEY:**
-- **Controller node (.env file):**
-```bash
-     # Find new key in HA
-     # HA UI → Settings → System → Backups → (i) icon → Encryption key
-     
-     # Update .env
-     vim ../.env
-     # Change: HA_BACKUP_ENCRYPT_KEY=<new-key>
-```
-
-- **GitHub Secrets:**
-```
-     GitHub → Settings → Secrets and variables → Actions
-     → Update HA_BACKUP_ENCRYPT_KEY
-```
-
-3. **Remove old backups (optional but recommended):**
-```bash
+4. **Delete old backups** (they have different keys):
+   ```bash
    ssh ubuntu@<target>
    sudo rm /mnt/backup/homeassistant/*.tar
-```
+   # Only keep backups created AFTER step 3
+   ```
 
-Reason: They use the old key and will fail to restore.
+### Why Old Backups Must Be Deleted
 
-### Why This Matters
+| Backup | Encrypted with | Matches Secrets key? |
+|--------|----------------|---------------------|
+| Old (before key change) | old random key | ❌ No → "Unknown format" error |
+| New (after key change) | your fixed key | ✅ Yes → Restore works |
 
-During disaster recovery, the playbook:
-1. Looks for backups in `/mnt/backup/homeassistant/`
-2. Tries newest backup first
-3. Uses `HA_BACKUP_ENCRYPT_KEY` from secrets/env
-4. **If key mismatch → "Unknown format" error**
+### Troubleshooting "Unknown format" Error
 
-**Common mistake:** Deploy succeeds → HA creates new backup → Old key still in secrets → Next disaster recovery fails!
+This error means key mismatch. Solutions:
+1. **Seedbox restore** - if seedbox is online, .storage is synced directly (no decryption needed)
+2. **Get key from running HA** - Settings → System → Backups → (i) → Encryption key
+3. **Bootstrap** - fresh install without backup restore (`-e ha_bootstrap_enable=true`)
 
 ### Phase 1: USB Preparation (10 minutes)
 
