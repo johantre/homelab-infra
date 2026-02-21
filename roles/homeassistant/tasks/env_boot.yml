@@ -3,8 +3,8 @@
 - name: Resolve variables from .env (properties) when provided
   no_log: true
   ansible.builtin.set_fact:
-    github_username: "{{ github_username | default(lookup('ini', 'GITHUB_USERNAME file=' + env_file + ' type=properties'), true) }}"
-    github_pat:       "{{ github_pat       | default(lookup('ini', 'GITHUB_PAT file=' + env_file + ' type=properties'), true) }}"
+    gh_username: "{{ gh_username | default(lookup('ini', 'GH_USERNAME file=' + env_file + ' type=properties'), true) }}"
+    gh_pat:       "{{ gh_pat       | default(lookup('ini', 'GH_PAT file=' + env_file + ' type=properties'), true) }}"
     cf_tunnel_token:  "{{ cf_tunnel_token  | default(lookup('ini', 'CF_TUNNEL_TOKEN file=' + env_file + ' type=properties'), true) }}"
     ha_backup_encrypt_key: "{{ ha_backup_encrypt_key | default(lookup('ini', 'HA_BACKUP_ENCRYPT_KEY file=' + env_file + ' type=properties'), true) }}"
   when: env_file is defined
@@ -13,8 +13,8 @@
 - name: Resolve variables from OS env when no env_file is provided
   no_log: true
   ansible.builtin.set_fact:
-    github_username: "{{ github_username | default(lookup('env','GITHUB_USERNAME'), true) }}"
-    github_pat:       "{{ github_pat       | default(lookup('env','GITHUB_PAT'), true) }}"
+    gh_username: "{{ gh_username | default(lookup('env','GH_USERNAME'), true) }}"
+    gh_pat:       "{{ gh_pat       | default(lookup('env','GH_PAT'), true) }}"
     cf_tunnel_token:  "{{ cf_tunnel_token  | default(lookup('env','CF_TUNNEL_TOKEN'), true) }}"
     ssh_priv_key_b64: "{{ ssh_priv_key_b64 | default(lookup('env','SSH_PRIV_KEY_B64'), true) }}"
     ha_backup_encrypt_key: "{{ ha_backup_encrypt_key | default(lookup('env','HA_BACKUP_ENCRYPT_KEY'), true) }}"
@@ -25,9 +25,9 @@
   no_log: true
   ansible.builtin.assert:
     that:
-      - github_username | length > 0
-      - github_pat | length > 0
-    fail_msg: "❌ Missing GITHUB_USERNAME or GITHUB_PAT (via --extra-vars, env_file, or OS env). ❌"
+      - gh_username | length > 0
+      - gh_pat | length > 0
+    fail_msg: "❌ Missing GH_USERNAME or GH_PAT (via --extra-vars, env_file, or OS env). ❌"
 
 - name: Assert CF_TUNNEL_TOKEN present when cloudflared is enabled
   no_log: true
@@ -94,8 +94,8 @@
       - esphome_data_dir is defined
       - service_data_dirs is defined
       # Credentials (checked above but verify here too)
-      - github_username is defined
-      - github_pat is defined
+      - gh_username is defined
+      - gh_pat is defined
     fail_msg: |
       ❌ CRITICAL VARIABLE(S) MISSING! ❌
       

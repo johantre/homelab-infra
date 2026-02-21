@@ -1,5 +1,5 @@
-github_pat: "{{ lookup('env','GITHUB_PAT') }}"
-github_username: "{{ lookup('env','GITHUB_USERNAME') }}"
+gh_pat: "{{ lookup('env','GH_PAT') }}"
+gh_username: "{{ lookup('env','GH_USERNAME') }}"
 
 runtime_uid: "{{ ansible_user_uid }}"
 runtime_gid: "{{ ansible_user_gid }}"
@@ -18,7 +18,7 @@ ha_native_backup_dir: "/mnt/backup/homeassistant"
 
 ha_config_repo_branch: "main"
 ha_config_repo_subdir: "homeassistant"
-ha_config_repo: "https://github.com/{{ lookup('env','GITHUB_USERNAME') }}/homelab-config.git"
+ha_config_repo: "https://github.com/{{ lookup('env','GH_USERNAME') }}/homelab-config.git"
 
 ha_user_username: "{{ lookup('env', 'HA_USER_USERNAME') }}"
 ha_user_password: "{{ lookup('env', 'HA_USER_PASSWORD') }}"

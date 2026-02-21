@@ -41,8 +41,8 @@ ansible-playbook site.yml -i inventories/ha_target_local.ini -l ha_target -e mai
 
 | Variable | Description |
 |----------|-------------|
-| `GITHUB_USERNAME` | GitHub username for repo access |
-| `GITHUB_PAT` | GitHub Personal Access Token |
+| `GH_USERNAME` | GitHub username for repo access |
+| `GH_PAT` | GitHub Personal Access Token |
 | `CF_TUNNEL_TOKEN` | Cloudflare tunnel token (when cloudflared enabled) |
 | `HA_BACKUP_ENCRYPT_KEY` | Encryption key for backup restore |
 | `HA_USER_USERNAME` | Bootstrap user (fresh install only) |
@@ -186,8 +186,8 @@ Explains the decision logic:
 
 ```bash
 # Set required environment variables
-export GITHUB_USERNAME="your-username"
-export GITHUB_PAT="ghp_..."
+export GH_USERNAME="your-username"
+export GH_PAT="ghp_..."
 export CF_TUNNEL_TOKEN="..."
 export HA_BACKUP_ENCRYPT_KEY="..."
 export HA_USER_USERNAME="admin"

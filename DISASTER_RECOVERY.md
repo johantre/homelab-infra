@@ -515,8 +515,8 @@ graph TD
 ### 1. Secrets (`.env` file)
 ```bash
 # Store securely (password manager, encrypted USB):
-GITHUB_USERNAME=xxx
-GITHUB_PAT=ghp_xxx
+GH_USERNAME=xxx
+GH_PAT=ghp_xxx
 CF_TUNNEL_TOKEN=xxx
 HA_USER_USERNAME=xxx
 HA_USER_PASSWORD=xxx

@@ -313,8 +313,8 @@ homelab-config/
 **Required Secrets:**
 ```bash
 # GitHub
-GITHUB_USERNAME=your-username
-GITHUB_PAT=ghp_xxxxxxxxxxxxx
+GH_USERNAME=your-username
+GH_PAT=ghp_xxxxxxxxxxxxx
 
 # Cloudflare Tunnel (for remote access)
 CF_TUNNEL_TOKEN=xxxxxxxxxxxxx
@@ -904,7 +904,7 @@ This infrastructure is designed to support multiple devices and services:
 - No cron — purely event-driven
 
 **What's still needed (after RPi4 migrates to containerized HA via Ansible):**
-1. **Ansible task** to provision `github_pat` into HA `secrets.yaml` during deploy (PAT flows: GitHub Secrets → Ansible → secrets.yaml → HA)
+1. **Ansible task** to provision `gh_pat` into HA `secrets.yaml` during deploy (PAT flows: GitHub Secrets → Ansible → secrets.yaml → HA)
 2. **`rest_command`** in `configuration.yaml` that calls `https://api.github.com/repos/johantre/homelab-infra/dispatches` with event `prod-config-changed`
 3. **HA automation** at 02:00 (after nightly backup at 01:00): if `input_boolean.backup_needed` was on → trigger git sync via rest_command
 

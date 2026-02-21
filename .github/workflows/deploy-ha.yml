@@ -188,8 +188,8 @@ jobs:
 
       - name: Deploy Home Assistant with Ansible
         env:
-          GITHUB_USERNAME: ${{ secrets.GH_USERNAME }}
-          GITHUB_PAT: ${{ secrets.GH_PAT }}
+          GH_USERNAME: ${{ secrets.GH_USERNAME }}
+          GH_PAT: ${{ secrets.GH_PAT }}
           SSH_PRIV_KEY_B64: ${{ secrets.SSH_PRIV_KEY_B64 }}
           CF_TUNNEL_TOKEN: ${{ secrets.CF_TUNNEL_TOKEN }}
           HA_USER_USERNAME: ${{ secrets.HA_USER_USERNAME }}

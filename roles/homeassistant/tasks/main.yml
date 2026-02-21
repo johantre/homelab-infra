@@ -22,7 +22,7 @@
     method: GET
     return_content: true
     headers:
-      Authorization: "Bearer {{ github_pat }}"
+      Authorization: "Bearer {{ gh_pat }}"
   register: ha_release_latest
   failed_when: ha_release_latest.status not in [200, 304]
   changed_when: false
