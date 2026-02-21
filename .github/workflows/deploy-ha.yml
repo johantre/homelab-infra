@@ -99,10 +99,13 @@ jobs:
           
           [[ -z "${{ secrets.GH_USERNAME }}" ]] && MISSING_SECRETS+=("GH_USERNAME")
           [[ -z "${{ secrets.GH_PAT }}" ]] && MISSING_SECRETS+=("GH_PAT")
-          [[ -z "${{ secrets.CF_TUNNEL_TOKEN }}" ]] && MISSING_SECRETS+=("CF_TUNNEL_TOKEN")
           [[ -z "${{ secrets.HA_USER_USERNAME }}" ]] && MISSING_SECRETS+=("HA_USER_USERNAME")
           [[ -z "${{ secrets.HA_USER_PASSWORD }}" ]] && MISSING_SECRETS+=("HA_USER_PASSWORD")
-          
+          [[ -z "${{ secrets.HA_BACKUP_ENCRYPT_KEY }}" ]] && MISSING_SECRETS+=("HA_BACKUP_ENCRYPT_KEY")
+          [[ -z "${{ secrets.HA_LONG_LIVED_TOKEN_GH_ACTIONS_GIT_SYNC }}" ]] && MISSING_SECRETS+=("HA_LONG_LIVED_TOKEN_GH_ACTIONS_GIT_SYNC")
+          [[ -z "${{ secrets.CF_TUNNEL_TOKEN }}" ]] && MISSING_SECRETS+=("CF_TUNNEL_TOKEN")
+          [[ -z "${{ secrets.SSH_PRIV_KEY_B64 }}" ]] && MISSING_SECRETS+=("SSH_PRIV_KEY_B64")
+
           if [[ ${#MISSING_SECRETS[@]} -gt 0 ]]; then
             echo "❌ CRITICAL: Missing secrets: ${MISSING_SECRETS[*]}"
             exit 1
