@@ -1,0 +1,33 @@
+# PiHole Docker Compose Stack (v6)
+# Managed by Ansible - do not edit manually
+# Generated for: {{ ansible_hostname }}
+#
+# Config strategy: pihole.toml (in volume) manages all settings.
+# Only the web password is passed via env var. All other settings
+# (DNS upstreams, listening mode, etc.) come from pihole.toml so
+# they remain editable in the web UI.
+
+services:
+  pihole:
+    image: pihole/pihole:{{ pihole_version }}
+    container_name: {{ pihole_container_name }}
+    # network_mode: host is required for DNS (port 53 TCP/UDP)
+    # With host networking, no port mappings are needed
+    network_mode: host
+    environment:
+      TZ: "{{ tz }}"
+      # v6: FTLCONF_webserver_api_password replaces WEBPASSWORD
+      FTLCONF_webserver_api_password: "${PIHOLE_WEB_PASSWORD}"
+    volumes:
+      - "{{ pihole_etc_dir }}:/etc/pihole"
+      - "/etc/localtime:/etc/localtime:ro"
+    cap_add:
+      - NET_ADMIN
+    restart: unless-stopped
+    # Health check: verify DNS is responding
+    healthcheck:
+      test: ["CMD", "dig", "+short", "+norecurse", "+retry=0", "@127.0.0.1", "pi.hole"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s

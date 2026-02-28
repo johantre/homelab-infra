@@ -1,0 +1,79 @@
+---
+# PiHole v6 bootstrap - fresh install
+#
+# PiHole v6 initializes from pihole.toml (volume).
+# Password is set via FTLCONF_webserver_api_password env var.
+# Gravity (blocklists) is downloaded on first pihole -g / scheduled update.
+
+- name: Show bootstrap notice
+  ansible.builtin.debug:
+    msg: "🆕 Bootstrap mode - starting fresh PiHole v6 with config from Git repo"
+
+- name: Stop PiHole container if running
+  ansible.builtin.shell: |
+    sg docker -c 'docker stop {{ pihole_container_name }}'
+  changed_when: true
+  ignore_errors: true
+
+- name: Clear existing pihole-etc volume (clean slate)
+  ansible.builtin.file:
+    path: "{{ pihole_etc_dir }}"
+    state: absent
+  become: true
+
+- name: Recreate pihole-etc directory
+  ansible.builtin.file:
+    path: "{{ pihole_etc_dir }}"
+    state: directory
+    mode: '0755'
+    owner: "{{ runtime_uid }}"
+    group: "{{ runtime_gid }}"
+
+- name: Apply pihole.toml from Git repo
+  ansible.builtin.copy:
+    src: "{{ pihole_config_repo_dir }}/pihole.toml"
+    dest: "{{ pihole_etc_dir }}/pihole.toml"
+    mode: '0640'
+    owner: "{{ runtime_uid }}"
+    group: "{{ runtime_gid }}"
+  failed_when: false  # Skip if not present in repo yet (first ever bootstrap)
+
+- name: Start PiHole container (fresh init)
+  ansible.builtin.shell: |
+    sg docker -c 'docker compose -p {{ pihole_project }} -f {{ pihole_stack_dir }}/docker-compose.yml up -d'
+  args:
+    chdir: "{{ pihole_stack_dir }}"
+  environment:
+    PIHOLE_WEB_PASSWORD: "{{ pihole_web_password }}"
+  changed_when: true
+
+- name: Wait for PiHole web interface to come up
+  ansible.builtin.uri:
+    url: "http://localhost:{{ pihole_host_port_http }}/admin/"
+    status_code: [200, 301, 302]
+  register: pihole_ping
+  retries: 45
+  delay: 3
+  until: pihole_ping.status in [200, 301, 302]
+
+- name: Read regex.list from Git repo
+  ansible.builtin.slurp:
+    src: "{{ pihole_config_repo_dir }}/regex.list"
+  register: regex_list_raw
+  failed_when: false
+
+- name: Apply regex deny rules from Git repo
+  ansible.builtin.shell: |
+    sg docker -c "docker exec {{ pihole_container_name }} pihole deny --regex '{{ item }}'"
+  loop: "{{ (regex_list_raw.content | b64decode).split('\n') | select('match', '^[^#\\s]') | list }}"
+  changed_when: true
+  failed_when: false
+  when: regex_list_raw.content is defined
+
+- name: Bootstrap summary
+  ansible.builtin.debug:
+    msg:
+      - "🆕 PiHole v6 bootstrap completed!"
+      - "🌐 Web UI: http://localhost:{{ pihole_host_port_http }}/admin/"
+      - "🔐 Password: PIHOLE_WEB_PASSWORD from secrets"
+      - "ℹ️  Gravity (blocklists) will download on first scheduled update"

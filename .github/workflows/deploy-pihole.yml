@@ -1,0 +1,264 @@
+name: Deploy PiHole
+
+on:
+  workflow_dispatch:
+    inputs:
+      maintenance_mode:
+        description: 'Maintenance mode (skip backup restore, config from Git only)'
+        required: false
+        default: 'true'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+
+jobs:
+  deploy-pihole:
+    runs-on: [self-hosted, pihole]
+
+    steps:
+      - name: Setup homelab directory structure
+        run: |
+          echo "📁 Setting up homelab directory structure..."
+          mkdir -p ~/homelab
+          echo "✅ Directory structure ready"
+
+      - name: Clone infra repository
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}
+          GH_USERNAME: ${{ secrets.GH_USERNAME }}
+        run: |
+          echo "📦 Cloning homelab-infra repository..."
+
+          if [[ -d ~/homelab/infra ]]; then
+            echo "Removing old infra..."
+            rm -rf ~/homelab/infra
+          fi
+
+          git clone \
+            https://${GH_USERNAME}:${GH_PAT}@github.com/johantre/homelab-infra.git \
+            ~/homelab/infra
+
+          if [[ ! -f ~/homelab/infra/site.yml ]]; then
+            echo "❌ CRITICAL: site.yml not found in infra repo!"
+            exit 1
+          fi
+
+          echo "✅ Infra repository cloned"
+
+      - name: Clone config repository
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}
+          GH_USERNAME: ${{ secrets.GH_USERNAME }}
+        run: |
+          echo "📦 Cloning homelab-config repository..."
+
+          if [[ -d ~/homelab/config ]]; then
+            echo "Removing old config..."
+            rm -rf ~/homelab/config
+          fi
+
+          git clone \
+            https://${GH_USERNAME}:${GH_PAT}@github.com/johantre/homelab-config.git \
+            ~/homelab/config
+
+          if [[ ! -d ~/homelab/config/pihole ]]; then
+            echo "❌ CRITICAL: pihole directory not found in config repo!"
+            echo "Config repo contents:"
+            ls -la ~/homelab/config/
+            exit 1
+          fi
+
+          echo "✅ Config repository cloned"
+          echo "PiHole config preview:"
+          ls -la ~/homelab/config/pihole/ | head -n 10
+
+      - name: Verify all secrets are present
+        run: |
+          echo "🔍 Verifying all required secrets..."
+
+          MISSING_SECRETS=()
+
+          [[ -z "${{ secrets.GH_USERNAME }}" ]] && MISSING_SECRETS+=("GH_USERNAME")
+          [[ -z "${{ secrets.GH_PAT }}" ]] && MISSING_SECRETS+=("GH_PAT")
+          [[ -z "${{ secrets.PIHOLE_WEB_PASSWORD }}" ]] && MISSING_SECRETS+=("PIHOLE_WEB_PASSWORD")
+          [[ -z "${{ secrets.SSH_PRIV_KEY_B64 }}" ]] && MISSING_SECRETS+=("SSH_PRIV_KEY_B64")
+
+          if [[ ${#MISSING_SECRETS[@]} -gt 0 ]]; then
+            echo "❌ CRITICAL: Missing secrets: ${MISSING_SECRETS[*]}"
+            exit 1
+          fi
+
+          echo "✅ All secrets present"
+
+      - name: Ensure Ansible is installed
+        run: |
+          echo "🔍 Checking Ansible installation..."
+
+          if ! command -v ansible-playbook &> /dev/null; then
+            echo "📦 Ansible not found - installing..."
+            sudo apt-get update -qq
+            sudo apt-get install -y ansible
+          fi
+
+          ANSIBLE_VERSION=$(ansible-playbook --version | head -n1)
+          echo "✅ Ansible: ${ANSIBLE_VERSION}"
+
+      - name: Verify required files exist
+        run: |
+          echo "🔍 Checking required files..."
+
+          cd ~/homelab/infra
+
+          MISSING_FILES=()
+
+          [[ ! -f "site.yml" ]] && MISSING_FILES+=("site.yml")
+          [[ ! -f "inventories/group_vars/all.yml" ]] && MISSING_FILES+=("all.yml")
+          [[ ! -f "inventories/pihole_target_local.ini" ]] && MISSING_FILES+=("pihole_target_local.ini")
+          [[ ! -f "inventories/pihole_target_remote.ini" ]] && MISSING_FILES+=("pihole_target_remote.ini")
+
+          if [[ ${#MISSING_FILES[@]} -gt 0 ]]; then
+            echo "❌ CRITICAL: Missing files: ${MISSING_FILES[*]}"
+            exit 1
+          fi
+
+          echo "✅ All required files present"
+
+      - name: Stop existing PiHole stack
+        run: |
+          echo "🛑 Stopping existing PiHole stack..."
+
+          if sg docker -c 'docker compose -p pihole-stack-ansible -f "$HOME/homelab/target/pihole-stack-ansible/docker-compose.yml" down' 2>/dev/null; then
+            echo "✅ Stack stopped successfully"
+          else
+            echo "ℹ️  No existing stack found (this is OK)"
+          fi
+
+      - name: Clean up existing deployment
+        run: |
+          MAINTENANCE_MODE="${{ github.event.inputs.maintenance_mode || 'true' }}"
+
+          echo "═══════════════════════════════════════════════════════════════════"
+          if [[ "$MAINTENANCE_MODE" == "true" ]]; then
+            echo "🔧 MAINTENANCE MODE - preserving runtime state"
+          else
+            echo "🔄 DISASTER RECOVERY MODE - full cleanup (backup/seedbox will restore)"
+          fi
+          echo "═══════════════════════════════════════════════════════════════════"
+
+          if [[ "$MAINTENANCE_MODE" != "true" ]]; then
+            # DR MODE: Full cleanup - backup/seedbox restore will repopulate
+            if [[ -d "$HOME/homelab/target/pihole-stack-ansible" ]]; then
+              echo "Removing pihole-stack-ansible (DR mode)..."
+              sudo rm -rf "$HOME/homelab/target/pihole-stack-ansible"
+              echo "✅ Removed pihole-stack-ansible"
+            fi
+          else
+            # MAINTENANCE MODE: Preserve volumes, Ansible only updates compose file
+            echo "ℹ️  Keeping pihole-stack-ansible/ intact (volumes, config)"
+          fi
+
+          echo "✅ Cleanup complete"
+
+      - name: Deploy PiHole with Ansible
+        env:
+          GH_USERNAME: ${{ secrets.GH_USERNAME }}
+          GH_PAT: ${{ secrets.GH_PAT }}
+          SSH_PRIV_KEY_B64: ${{ secrets.SSH_PRIV_KEY_B64 }}
+          PIHOLE_WEB_PASSWORD: ${{ secrets.PIHOLE_WEB_PASSWORD }}
+        run: |
+          echo "🚀 Starting PiHole deployment..."
+
+          cd ~/homelab/infra
+
+          set -e
+          set -o pipefail
+
+          ansible-playbook \
+            -i inventories/pihole_target_local.ini \
+            site.yml \
+            -l pihole_target \
+            -e maintenance_mode=${{ github.event.inputs.maintenance_mode || 'true' }} \
+            -vv \
+            2>&1 | tee ansible-deploy-pihole.log
+
+          ANSIBLE_EXIT_CODE=${PIPESTATUS[0]}
+
+          if [[ ${ANSIBLE_EXIT_CODE} -ne 0 ]]; then
+            echo ""
+            echo "❌ CRITICAL: Ansible deployment FAILED!"
+            echo "Exit code: ${ANSIBLE_EXIT_CODE}"
+            echo ""
+            echo "📋 Last 50 lines of output:"
+            tail -n 50 ansible-deploy-pihole.log
+            exit 1
+          fi
+
+          echo "✅ Ansible deployment completed successfully!"
+
+      - name: Verify deployment success
+        run: |
+          echo "🔍 Verifying deployment..."
+
+          if ! sg docker -c 'docker ps --filter "name=pihole_ansible" --format "{{.Names}}"' | grep -q "pihole_ansible"; then
+            echo "❌ CRITICAL: PiHole container is NOT running!"
+            echo ""
+            echo "Docker containers:"
+            sg docker -c 'docker ps -a --filter "name=pihole" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"'
+            echo ""
+            echo "Docker logs (last 30 lines):"
+            sg docker -c 'docker logs pihole_ansible --tail 30' 2>&1 || echo "Could not fetch logs"
+            exit 1
+          fi
+
+          echo "✅ PiHole container is running"
+
+          # Check if web UI is responding (wait max 90 seconds)
+          echo "Waiting for PiHole web UI to be ready..."
+          for i in {1..18}; do
+            if curl -f -s "http://localhost:80/admin/" > /dev/null 2>&1; then
+              echo "✅ PiHole web UI is responding!"
+              break
+            fi
+
+            if [[ $i -eq 18 ]]; then
+              echo "❌ CRITICAL: PiHole web UI not responding after 90 seconds!"
+              echo ""
+              echo "Container logs:"
+              sg docker -c 'docker logs pihole_ansible --tail 50'
+              exit 1
+            fi
+
+            echo "  Attempt $i/18 - waiting..."
+            sleep 5
+          done
+
+      - name: Deployment Summary
+        if: always()
+        run: |
+          echo ""
+          echo "======================================"
+          echo "📊 DEPLOYMENT SUMMARY"
+          echo "======================================"
+          echo "Deployed to: localhost (self-hosted runner)"
+          echo "PiHole web UI: http://$(hostname -I | awk '{print $1}')/admin/"
+          echo "DNS server: $(hostname -I | awk '{print $1}'):53"
+          echo ""
+          echo "Running containers:"
+          sg docker -c 'docker ps --filter "name=pihole" --format "table {{.Names}}\t{{.Status}}"' || echo "Could not list containers"
+          echo ""
+
+          if [[ "${{ job.status }}" == "success" ]]; then
+            echo "✅ DEPLOYMENT SUCCESSFUL!"
+          else
+            echo "❌ DEPLOYMENT FAILED - Check logs above"
+          fi
+          echo "======================================"
+
+      - name: Upload Ansible logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ansible-deploy-pihole-log
+          path: ~/homelab/infra/ansible-deploy-pihole.log
+          retention-days: 7

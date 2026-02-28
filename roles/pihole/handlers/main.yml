@@ -1,0 +1,20 @@
+---
+# Handlers for pihole role
+
+- name: Restart argononed
+  ansible.builtin.systemd:
+    name: argononed
+    state: restarted
+  become: true
+  when: ansible_architecture in ['aarch64', 'armv7l', 'armv6l']
+
+- name: restart systemd-resolved
+  ansible.builtin.systemd:
+    name: systemd-resolved
+    state: restarted
+  become: true
+
+- name: Restart pihole
+  ansible.builtin.shell: |
+    sg docker -c 'docker restart {{ pihole_container_name }}'
+  changed_when: true

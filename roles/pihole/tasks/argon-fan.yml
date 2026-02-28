@@ -1,0 +1,55 @@
+---
+# Argon One Case Fan Configuration
+# Installs and configures the Argon One fan daemon for Raspberry Pi
+#
+# Only runs when:
+#   - enable_argon_fan: true
+#   - Architecture is ARM (Raspberry Pi)
+
+- name: Check if running on Raspberry Pi (ARM)
+  ansible.builtin.set_fact:
+    is_raspberry_pi: "{{ ansible_architecture in ['aarch64', 'armv7l', 'armv6l'] }}"
+
+- name: Skip Argon setup on non-Pi hardware
+  ansible.builtin.debug:
+    msg: "⏭️ Skipping Argon One setup - not a Raspberry Pi (arch: {{ ansible_architecture }})"
+  when: not is_raspberry_pi
+
+- name: Check if argononed is already installed
+  ansible.builtin.stat:
+    path: /usr/bin/argon-config
+  register: argon_installed
+  when: is_raspberry_pi
+
+- name: Install Argon One daemon
+  ansible.builtin.shell: |
+    curl -sSL https://download.argon40.com/argon1.sh | bash
+  args:
+    creates: /usr/bin/argon-config
+  when:
+    - is_raspberry_pi
+    - not argon_installed.stat.exists
+  become: true
+
+- name: Configure Argon fan curve
+  ansible.builtin.copy:
+    dest: /etc/argononed.conf
+    mode: "0644"
+    content: |
+      #
+      # Argon Fan Speed Configuration (CPU)
+      # Managed by Ansible - do not edit manually
+      # Note: Minimum effective speed is 25% (hardware limit)
+      #
+      {{ argon_fan_curve | default(argon_fan_curve_default) }}
+  become: true
+  notify: Restart argononed
+  when: is_raspberry_pi
+
+- name: Ensure argononed service is enabled and running
+  ansible.builtin.systemd:
+    name: argononed
+    enabled: true
+    state: started
+  become: true
+  when: is_raspberry_pi

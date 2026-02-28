@@ -1,0 +1,157 @@
+---
+# PiHole backup restore - restore from local tar.gz backup
+#
+# Backup format: tar.gz containing:
+#   pihole-etc/   → mounted to /etc/pihole in container
+#   dnsmasq-etc/  → mounted to /etc/dnsmasq.d in container
+#
+# Config files (custom.list, whitelist.txt, etc.) come from Git repo.
+# The backup restores runtime state only (gravity.db, FTL database, etc.)
+
+- name: Install backup restore dependencies
+  ansible.builtin.apt:
+    name:
+      - tar
+    state: present
+    update_cache: true
+  become: true
+
+- block:
+    - name: Find all backups in pihole backup directory
+      ansible.builtin.find:
+        paths: "{{ pihole_backup_dir }}"
+        patterns: "*.tar.gz"
+        file_type: file
+      register: backup_files
+
+    - name: Fail if no backups found
+      ansible.builtin.fail:
+        msg: "❌ No backup files found in {{ pihole_backup_dir }}"
+      when: backup_files.matched == 0
+
+    - name: Sort backups by modification time and select newest
+      ansible.builtin.set_fact:
+        latest_backup: "{{ backup_files.files | sort(attribute='mtime', reverse=True) | first }}"
+
+    - name: Show selected backup
+      ansible.builtin.debug:
+        msg:
+          - "📦 Selected backup: {{ latest_backup.path | basename }}"
+          - "📅 Modified: {{ latest_backup.mtime }}"
+          - "💾 Size: {{ (latest_backup.size / 1024 / 1024) | round(2) }} MB"
+
+    - name: Create temporary restore directory
+      ansible.builtin.file:
+        path: /tmp/pihole-backup-restore
+        state: directory
+        mode: '0700'
+
+    - name: Extract backup archive
+      ansible.builtin.unarchive:
+        src: "{{ latest_backup.path }}"
+        dest: /tmp/pihole-backup-restore/
+        remote_src: yes
+
+    - name: Verify pihole-etc directory exists in backup
+      ansible.builtin.stat:
+        path: /tmp/pihole-backup-restore/pihole-etc
+      register: pihole_etc_stat
+
+    - name: Fail if pihole-etc missing in backup
+      ansible.builtin.fail:
+        msg: "❌ pihole-etc/ directory not found in backup!"
+      when: not pihole_etc_stat.stat.exists
+
+    - name: Stop PiHole container before restore
+      ansible.builtin.shell: |
+        sg docker -c 'docker stop {{ pihole_container_name }}'
+      changed_when: true
+      ignore_errors: true
+
+    - name: Clear existing pihole-etc volume (will be restored from backup)
+      ansible.builtin.file:
+        path: "{{ pihole_etc_dir }}"
+        state: absent
+      become: true
+
+    - name: Clear existing dnsmasq-etc volume (will be restored from backup)
+      ansible.builtin.file:
+        path: "{{ pihole_dnsmasq_dir }}"
+        state: absent
+      become: true
+
+    - name: Recreate pihole volume directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: '0755'
+      loop:
+        - "{{ pihole_etc_dir }}"
+        - "{{ pihole_dnsmasq_dir }}"
+
+    - name: Restore pihole-etc from backup
+      ansible.builtin.shell: |
+        cp -r /tmp/pihole-backup-restore/pihole-etc/. "{{ pihole_etc_dir }}/"
+        echo "✅ pihole-etc/ restored"
+      register: etc_restore
+      changed_when: true
+
+    - name: Restore dnsmasq-etc from backup
+      ansible.builtin.shell: |
+        if [ -d /tmp/pihole-backup-restore/dnsmasq-etc ]; then
+          cp -r /tmp/pihole-backup-restore/dnsmasq-etc/. "{{ pihole_dnsmasq_dir }}/"
+          echo "✅ dnsmasq-etc/ restored"
+        else
+          echo "ℹ️ No dnsmasq-etc/ in backup (using defaults)"
+        fi
+      register: dnsmasq_restore
+      changed_when: "'restored' in dnsmasq_restore.stdout"
+
+    - name: Show restore results
+      ansible.builtin.debug:
+        msg:
+          - "{{ etc_restore.stdout }}"
+          - "{{ dnsmasq_restore.stdout }}"
+
+    - name: Fix ownership of restored volumes
+      ansible.builtin.file:
+        path: "{{ item }}"
+        owner: "{{ runtime_uid }}"
+        group: "{{ runtime_gid }}"
+        recurse: yes
+        state: directory
+      become: true
+      loop:
+        - "{{ pihole_etc_dir }}"
+        - "{{ pihole_dnsmasq_dir }}"
+
+    - name: Start PiHole container after restore
+      ansible.builtin.shell: |
+        sg docker -c 'docker start {{ pihole_container_name }}'
+      changed_when: true
+
+    - name: Wait for PiHole web interface to come up
+      ansible.builtin.uri:
+        url: "http://localhost:{{ pihole_host_port_http }}/admin/"
+        status_code: [200, 301, 302]
+      register: pihole_ping
+      retries: 30
+      delay: 2
+      until: pihole_ping.status in [200, 301, 302]
+      ignore_errors: true
+
+    - name: Backup restore summary
+      ansible.builtin.debug:
+        msg:
+          - "✅ PiHole backup restored successfully!"
+          - "📦 Source: {{ latest_backup.path | basename }}"
+          - "📂 pihole-etc: {{ pihole_etc_dir }}"
+          - "📂 dnsmasq-etc: {{ pihole_dnsmasq_dir }}"
+          - "✅ PiHole container restarted"
+
+  always:
+    - name: Remove temporary restore directory (GUARANTEED cleanup)
+      ansible.builtin.file:
+        path: /tmp/pihole-backup-restore
+        state: absent
+      failed_when: false

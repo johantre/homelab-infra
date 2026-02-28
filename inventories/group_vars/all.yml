@@ -66,3 +66,18 @@ argon_fan_curve_default: |
   55=40
   65=70
   75=100
+
+# --- PiHole
+pihole_version: "latest"
+pihole_project: "pihole-stack-ansible"
+pihole_stack_dir: "{{ base_dir }}/pihole-stack-ansible"
+pihole_etc_dir: "{{ pihole_stack_dir }}/data/pihole-etc"
+pihole_dnsmasq_dir: "{{ pihole_stack_dir }}/data/dnsmasq-etc"
+pihole_backup_dir: "{{ pihole_stack_dir }}/backup"
+pihole_config_repo_dir: "{{ lookup('env', 'HOME') }}/homelab/config/pihole"
+pihole_container_name: pihole_ansible
+pihole_host_port_http: 80
+pihole_host_port_https: 443
+pihole_host_port_dns: 53
+pihole_seedbox_network: "192.168.3.0/24"
+pihole_web_password: "{{ lookup('env', 'PIHOLE_WEB_PASSWORD') }}"

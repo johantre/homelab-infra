@@ -1,0 +1,72 @@
+## Resolve variables (single source of truth)
+## 1) If env_file is given read .env (KEY=VALUE)
+- name: Resolve variables from .env (properties) when provided
+  no_log: true
+  ansible.builtin.set_fact:
+    gh_username: "{{ gh_username | default(lookup('ini', 'GH_USERNAME file=' + env_file + ' type=properties'), true) }}"
+    gh_pat:       "{{ gh_pat       | default(lookup('ini', 'GH_PAT file=' + env_file + ' type=properties'), true) }}"
+    pihole_web_password: "{{ pihole_web_password | default(lookup('ini', 'PIHOLE_WEB_PASSWORD file=' + env_file + ' type=properties'), true) }}"
+  when: env_file is defined
+
+## 2) No env_file given, get from OS-env
+- name: Resolve variables from OS env when no env_file is provided
+  no_log: true
+  ansible.builtin.set_fact:
+    gh_username: "{{ gh_username | default(lookup('env','GH_USERNAME'), true) }}"
+    gh_pat:       "{{ gh_pat       | default(lookup('env','GH_PAT'), true) }}"
+    ssh_priv_key_b64: "{{ ssh_priv_key_b64 | default(lookup('env','SSH_PRIV_KEY_B64'), true) }}"
+    pihole_web_password: "{{ pihole_web_password | default(lookup('env','PIHOLE_WEB_PASSWORD'), true) }}"
+  when: env_file is not defined
+
+- name: Assert GitHub tokens present
+  no_log: true
+  ansible.builtin.assert:
+    that:
+      - gh_username | length > 0
+      - gh_pat | length > 0
+    fail_msg: "❌ Missing GH_USERNAME or GH_PAT (via --extra-vars, env_file, or OS env). ❌"
+
+- name: Assert SSH private key present when connection is local
+  no_log: true
+  ansible.builtin.assert:
+    that:
+      - ssh_priv_key_b64 | length > 0
+    fail_msg: "❌ Missing SSH_PRIV_KEY_B64 for self-hosted runner deployment. ❌"
+  when: ansible_connection == 'local'
+
+- name: Assert PIHOLE_WEB_PASSWORD present
+  no_log: true
+  ansible.builtin.assert:
+    that:
+      - pihole_web_password | length > 0
+    fail_msg: "❌ Missing PIHOLE_WEB_PASSWORD (required for PiHole admin interface). ❌"
+
+- name: Validate all critical pihole variables are defined
+  ansible.builtin.assert:
+    that:
+      - pihole_stack_dir is defined
+      - pihole_etc_dir is defined
+      - pihole_backup_dir is defined
+      - pihole_container_name is defined
+      - pihole_version is defined
+      - pihole_project is defined
+      - pihole_seedbox_network is defined
+      - base_dir is defined
+      - base_home is defined
+      - runtime_uid is defined
+      - runtime_gid is defined
+      - tz is defined
+      - enable_argon_fan is defined
+      - enable_target_passwordless_sudo is defined
+      - gh_username is defined
+      - gh_pat is defined
+    fail_msg: |
+      ❌ CRITICAL VARIABLE(S) MISSING! ❌
+
+      Check:
+      - Is your inventory correct? (-i inventories/pihole_target_local.ini or pihole_target_remote.ini)
+      - Is all.yml in the right location?
+      - Did you provide env_file? (-e env_file=../.env)
+
+      Run with -vvv to see which variable is undefined.
+    success_msg: "✅ All critical pihole variables validated"

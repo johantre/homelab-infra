@@ -15,7 +15,7 @@ on:
         type: choice
         options:
           - homeassistant
-          # - pihole
+          - pihole
           # - openwrt
       force:
         description: 'Force sync (ignore conflicts)'

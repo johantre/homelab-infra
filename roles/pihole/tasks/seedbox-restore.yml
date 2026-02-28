@@ -1,0 +1,304 @@
+---
+# PiHole seedbox restore - discover existing PiHole on network and sync config
+#
+# Discovery:
+#   1. Install nmap on target
+#   2. Scan pihole_seedbox_network for port pihole_host_port_http
+#   3. SSH-verify each candidate is actually PiHole (native or Docker)
+#   4. Pick instance with largest gravity.db (most data = production)
+#   5. Copy /etc/pihole/ and /etc/dnsmasq.d/ via SSH tar pipe
+#
+# No database sync needed - gravity.db is rebuilt on first start via 'pihole -g'
+
+- name: Install seedbox discovery dependencies
+  ansible.builtin.apt:
+    name:
+      - nmap
+    state: present
+    update_cache: true
+  become: true
+
+# Block with guaranteed key cleanup
+- block:
+    - name: Deploy private key to target (whenever SSH_PRIV_KEY_B64 is available)
+      ansible.builtin.copy:
+        content: "{{ ssh_priv_key_b64 | b64decode }}"
+        dest: "{{ ansible_env.HOME }}/.ssh/id_ed25519_seedbox_priv"
+        mode: '0600'
+      when: ssh_priv_key_b64 | default('') | length > 0
+      no_log: true
+
+    - name: Configure SSH to use seedbox key
+      ansible.builtin.lineinfile:
+        path: "{{ ansible_env.HOME }}/.ssh/config"
+        line: "IdentityFile {{ ansible_env.HOME }}/.ssh/id_ed25519_seedbox_priv"
+        create: yes
+        mode: '0600'
+      when: ssh_priv_key_b64 | default('') | length > 0
+
+    - name: Copy PiHole seedbox discovery script to target
+      ansible.builtin.copy:
+        src: roles/pihole/files/find-pihole-seedbox.sh
+        dest: /tmp/find-pihole-seedbox.sh
+        mode: '0755'
+
+    - name: Discover PiHole seedbox on network (exclude all local IPs)
+      ansible.builtin.shell: |
+        bash /tmp/find-pihole-seedbox.sh {{ pihole_seedbox_network }} {{ pihole_host_port_http }} {{ ansible_all_ipv4_addresses | join(' ') }}
+      register: seedbox_discovery
+      failed_when: false
+      changed_when: false
+
+    - name: Set seedbox found flag
+      ansible.builtin.set_fact:
+        seedbox_found: "{{ seedbox_discovery.rc == 0 }}"
+
+    - name: Show seedbox not found message
+      ansible.builtin.debug:
+        msg: "⚠️ No PiHole seedbox found on {{ pihole_seedbox_network }} - skipping seedbox restore"
+      when: not seedbox_found
+
+    - name: Show discovery output
+      ansible.builtin.debug:
+        msg: "{{ seedbox_discovery.stdout_lines }}"
+      when: seedbox_found
+
+    - name: Set seedbox IP from discovery
+      ansible.builtin.set_fact:
+        seedbox_ip: "{{ seedbox_discovery.stdout_lines | last }}"
+      when: seedbox_found
+
+    - name: Show discovered seedbox
+      ansible.builtin.debug:
+        msg: "Discovered PiHole seedbox at: {{ seedbox_ip }}"
+      when: seedbox_found
+
+    - name: Determine SSH user for seedbox
+      ansible.builtin.shell: |
+        for USER in ubuntu root; do
+          if ssh -o ConnectTimeout=2 -o StrictHostKeyChecking=no -o BatchMode=yes $USER@{{ seedbox_ip }} "exit" 2>/dev/null; then
+            echo $USER
+            exit 0
+          fi
+        done
+        exit 1
+      register: seedbox_user_check
+      failed_when: seedbox_user_check.rc != 0
+      changed_when: false
+      when: seedbox_found
+
+    - name: Set seedbox SSH user
+      ansible.builtin.set_fact:
+        seedbox_user: "{{ seedbox_user_check.stdout }}"
+      when: seedbox_found
+
+    # Detect whether seedbox runs native or Docker PiHole
+    - name: Detect PiHole deployment type on seedbox
+      ansible.builtin.shell: |
+        ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no {{ seedbox_user }}@{{ seedbox_ip }} "
+          if docker ps 2>/dev/null | grep -q pihole; then
+            echo 'docker'
+          elif [ -f /etc/pihole/pihole.toml ]; then
+            echo 'native'
+          else
+            echo 'unknown'
+          fi
+        "
+      register: seedbox_type_check
+      changed_when: false
+      when: seedbox_found
+
+    - name: Set seedbox type
+      ansible.builtin.set_fact:
+        seedbox_type: "{{ seedbox_type_check.stdout | trim }}"
+      when: seedbox_found
+
+    - name: Show seedbox deployment type
+      ansible.builtin.debug:
+        msg: "Seedbox PiHole type: {{ seedbox_type }}"
+      when: seedbox_found
+
+    - name: Fail if seedbox type unknown
+      ansible.builtin.fail:
+        msg: "❌ Cannot detect PiHole on seedbox {{ seedbox_ip }} (neither native nor Docker)"
+      when:
+        - seedbox_found
+        - seedbox_type == 'unknown'
+
+    # Determine source paths based on deployment type
+    - name: Set source paths for native PiHole seedbox
+      ansible.builtin.set_fact:
+        seedbox_pihole_etc: "/etc/pihole"
+        seedbox_dnsmasq_etc: "/etc/dnsmasq.d"
+      when:
+        - seedbox_found
+        - seedbox_type == 'native'
+
+    - name: Get Docker volume paths for Docker PiHole seedbox
+      ansible.builtin.shell: |
+        ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no {{ seedbox_user }}@{{ seedbox_ip }} "
+          CONTAINER=\$(docker ps --filter 'ancestor=pihole/pihole' --format '{{{{.Names}}}}' | head -1)
+          if [ -z \"\$CONTAINER\" ]; then
+            CONTAINER=\$(docker ps | grep pihole | awk '{print \$NF}' | head -1)
+          fi
+          docker inspect \"\$CONTAINER\" --format '{{{{range .Mounts}}}}{{{{.Source}}}} {{{{.Destination}}}}{{{{println}}}}{{{{end}}}}' 2>/dev/null
+        "
+      register: seedbox_volume_check
+      changed_when: false
+      when:
+        - seedbox_found
+        - seedbox_type == 'docker'
+
+    - name: Set source paths for Docker PiHole seedbox
+      ansible.builtin.set_fact:
+        seedbox_pihole_etc: "{{ seedbox_volume_check.stdout_lines | select('search', '/etc/pihole') | first | split(' ') | first | default('/etc/pihole') }}"
+        seedbox_dnsmasq_etc: "{{ seedbox_volume_check.stdout_lines | select('search', '/etc/dnsmasq.d') | first | split(' ') | first | default('/etc/dnsmasq.d') }}"
+      when:
+        - seedbox_found
+        - seedbox_type == 'docker'
+
+    - name: Show source paths
+      ansible.builtin.debug:
+        msg:
+          - "Source pihole-etc: {{ seedbox_pihole_etc }}"
+          - "Source dnsmasq-etc: {{ seedbox_dnsmasq_etc }}"
+      when: seedbox_found
+
+    - name: Stop PiHole container before seedbox sync
+      ansible.builtin.shell: |
+        sg docker -c 'docker stop {{ pihole_container_name }}'
+      changed_when: true
+      ignore_errors: true
+      when: seedbox_found
+
+    - name: Ensure pihole volume directories exist
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: '0755'
+      loop:
+        - "{{ pihole_etc_dir }}"
+        - "{{ pihole_dnsmasq_dir }}"
+      when: seedbox_found
+
+    - name: Transfer pihole-etc from seedbox to target (excl. large runtime DBs)
+      ansible.builtin.shell: |
+        set -e
+        # Exclude FTL query log and MAC vendor DB (large, not needed)
+        # gravity.db is transferred separately via Python backup for consistency
+        ssh -o StrictHostKeyChecking=no {{ seedbox_user }}@{{ seedbox_ip }} \
+          "sudo tar -czf - --exclude='./pihole-FTL.db' --exclude='./pihole-FTL.db-shm' --exclude='./pihole-FTL.db-wal' --exclude='./macvendor.db' --exclude='./gravity.db' -C {{ seedbox_pihole_etc }} ." | \
+        tar -xzf - -C {{ pihole_etc_dir }}/
+        echo "✅ pihole-etc transferred from {{ seedbox_ip }}"
+      register: etc_transfer
+      changed_when: true
+      when: seedbox_found
+
+    - name: Transfer gravity.db from seedbox via Python sqlite3 backup (consistent copy)
+      ansible.builtin.shell: |
+        set -e
+        # Use Python sqlite3 backup API - safe even while FTL is running on source
+        ssh -o StrictHostKeyChecking=no {{ seedbox_user }}@{{ seedbox_ip }} "sudo python3 -c \"
+        import sqlite3
+        src = sqlite3.connect('{{ seedbox_pihole_etc }}/gravity.db')
+        dst = sqlite3.connect('/tmp/gravity_seedbox_backup.db')
+        src.backup(dst)
+        dst.close()
+        src.close()
+        \""
+        ssh -o StrictHostKeyChecking=no {{ seedbox_user }}@{{ seedbox_ip }} "sudo cat /tmp/gravity_seedbox_backup.db" \
+          > {{ pihole_etc_dir }}/gravity.db
+        ssh -o StrictHostKeyChecking=no {{ seedbox_user }}@{{ seedbox_ip }} "sudo rm -f /tmp/gravity_seedbox_backup.db"
+        echo "✅ gravity.db transferred from {{ seedbox_ip }} ($(du -sh {{ pihole_etc_dir }}/gravity.db | cut -f1))"
+      register: gravity_transfer
+      changed_when: true
+      when: seedbox_found
+      ignore_errors: true  # Pi4 might not have Python sqlite3 - not fatal
+
+    - name: Transfer dnsmasq-etc from seedbox to target
+      ansible.builtin.shell: |
+        set -e
+        ssh -o StrictHostKeyChecking=no {{ seedbox_user }}@{{ seedbox_ip }} \
+          "sudo tar -czf - -C {{ seedbox_dnsmasq_etc }} ." | \
+        tar -xzf - -C {{ pihole_dnsmasq_dir }}/
+        echo "✅ dnsmasq-etc transferred from {{ seedbox_ip }}"
+      register: dnsmasq_transfer
+      changed_when: true
+      when: seedbox_found
+      ignore_errors: true  # dnsmasq dir might be empty on some installs
+
+    - name: Show transfer results
+      ansible.builtin.debug:
+        msg:
+          - "{{ etc_transfer.stdout | default('') }}"
+          - "{{ gravity_transfer.stdout | default('gravity.db: skipped or failed') }}"
+          - "{{ dnsmasq_transfer.stdout | default('') }}"
+      when: seedbox_found
+
+    - name: Verify pihole.toml was transferred
+      ansible.builtin.stat:
+        path: "{{ pihole_etc_dir }}/pihole.toml"
+      register: piholetoml_stat
+      when: seedbox_found
+
+    - name: Fail if pihole.toml missing after transfer
+      ansible.builtin.fail:
+        msg: "❌ pihole.toml not found after seedbox restore - transfer may have failed"
+      when:
+        - seedbox_found
+        - not piholetoml_stat.stat.exists
+
+    - name: Fix ownership of restored volumes
+      ansible.builtin.file:
+        path: "{{ item }}"
+        owner: "{{ runtime_uid }}"
+        group: "{{ runtime_gid }}"
+        recurse: yes
+        state: directory
+      become: true
+      loop:
+        - "{{ pihole_etc_dir }}"
+        - "{{ pihole_dnsmasq_dir }}"
+      when: seedbox_found
+
+    - name: Start PiHole container after seedbox sync
+      ansible.builtin.shell: |
+        sg docker -c 'docker start {{ pihole_container_name }}'
+      changed_when: true
+      when: seedbox_found
+
+    - name: Wait for PiHole web interface to come up
+      ansible.builtin.uri:
+        url: "http://localhost:{{ pihole_host_port_http }}/admin/"
+        status_code: [200, 301, 302]
+      register: pihole_ping
+      retries: 30
+      delay: 2
+      until: pihole_ping.status in [200, 301, 302]
+      ignore_errors: true
+      when: seedbox_found
+
+    - name: Seedbox restore summary
+      ansible.builtin.debug:
+        msg:
+          - "✅ PiHole seedbox restore completed!"
+          - "Seedbox: {{ seedbox_user }}@{{ seedbox_ip }} ({{ seedbox_type }})"
+          - "pihole-etc: {{ seedbox_pihole_etc }} → {{ pihole_etc_dir }}"
+          - "dnsmasq-etc: {{ seedbox_dnsmasq_etc }} → {{ pihole_dnsmasq_dir }}"
+          - "ℹ️  gravity.db will be rebuilt on first PiHole update (pihole -g)"
+      when: seedbox_found
+
+  always:
+    - name: Remove seedbox private key (GUARANTEED cleanup)
+      ansible.builtin.file:
+        path: "{{ ansible_env.HOME }}/.ssh/id_ed25519_seedbox_priv"
+        state: absent
+      when: ssh_priv_key_b64 | default('') | length > 0
+
+    - name: Remove SSH config entry (cleanup)
+      ansible.builtin.lineinfile:
+        path: "{{ ansible_env.HOME }}/.ssh/config"
+        line: "IdentityFile {{ ansible_env.HOME }}/.ssh/id_ed25519_seedbox_priv"
+        state: absent
+      when: ssh_priv_key_b64 | default('') | length > 0
+      failed_when: false

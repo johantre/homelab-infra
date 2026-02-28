@@ -1,0 +1,175 @@
+---
+## Single source of truth for env + hard asserts
+- name: Bootstrap env (resolve and validate all variables)
+  ansible.builtin.import_tasks: env_boot.yml
+  tags: [always]
+
+# Fast, reliable facts (no sudo) to avoid stalls on "Gathering Facts"
+- name: Gather facts without sudo (fast & reliable)
+  ansible.builtin.setup:
+    gather_subset: ['min']
+
+# Ensure target can run apt/system tasks without prompts (CI-friendly)
+- name: Include sudoers setup for target
+  ansible.builtin.include_tasks: sudoers.yml
+  when: "'pihole_target' in group_names and (enable_target_passwordless_sudo | default(true))"
+
+# Optional OS updates (runs only when --tags os_update is used)
+- name: Include OS updates (opt-in via tags)
+  include_tasks:
+    file: os-update.yml
+    apply:
+      tags:
+        - os_update
+  tags: [os_update, never]
+
+# Install Docker + Compose
+- name: Include docker install for target
+  ansible.builtin.include_tasks: docker-install.yml
+  when: "'pihole_target' in group_names"
+
+# Argon One case fan configuration (optional, Pi4 only)
+- name: Include Argon One fan setup
+  ansible.builtin.include_tasks: argon-fan.yml
+  when:
+    - "'pihole_target' in group_names"
+    - enable_argon_fan | default(false) | bool
+
+# Create base directories for the stack
+- name: Ensure PiHole base directories exist
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+    owner: "{{ ansible_user_id }}"
+    group: "{{ ansible_user_gid | default(ansible_user_id) }}"
+  loop:
+    - "{{ pihole_stack_dir }}"
+    - "{{ pihole_etc_dir }}"
+    - "{{ pihole_backup_dir }}"
+
+- name: Fail fast if we cannot write to pihole_stack_dir
+  ansible.builtin.file:
+    path: "{{ pihole_stack_dir }}/.permcheck"
+    state: touch
+    mode: "0644"
+  changed_when: false
+
+# Render docker-compose (always)
+- name: Render docker-compose
+  ansible.builtin.template:
+    src: "docker-compose.yml.j2"
+    dest: "{{ pihole_stack_dir }}/docker-compose.yml"
+    mode: "0644"
+
+# Bring up the stack (will be stopped/started by DR tasks if needed)
+- name: Bring up PiHole stack
+  no_log: true
+  ansible.builtin.shell: |
+    sg docker -c 'docker compose -p {{ pihole_project | quote }} -f {{ pihole_stack_dir }}/docker-compose.yml up -d'
+  args:
+    chdir: "{{ pihole_stack_dir }}"
+  environment:
+    PIHOLE_WEB_PASSWORD: "{{ pihole_web_password }}"
+  register: compose_up
+  changed_when: false
+
+- name: Derive changed=true from compose output (stdout+stderr)
+  ansible.builtin.set_fact:
+    _compose_changed: >-
+      {{
+        ('Recreated'  in ((compose_up.stdout|default('')) ~ (compose_up.stderr|default('')))) or
+        ('Recreating' in ((compose_up.stdout|default('')) ~ (compose_up.stderr|default('')))) or
+        ('Created'    in ((compose_up.stdout|default('')) ~ (compose_up.stderr|default('')))) or
+        ('Creating'   in ((compose_up.stdout|default('')) ~ (compose_up.stderr|default('')))) or
+        ('Starting'   in ((compose_up.stdout|default('')) ~ (compose_up.stderr|default(''))))
+      }}
+
+- name: Mark task changed if compose created/recreated/started containers
+  ansible.builtin.debug:
+    msg: "Compose up ran."
+  changed_when: _compose_changed
+
+# ============================================================================
+# DISASTER RECOVERY LOGIC
+# Priority: Local backup > Seedbox > Bootstrap (fresh install)
+# ============================================================================
+
+- name: "═══════════════════════════════════════════════════════════════════"
+  ansible.builtin.debug:
+    msg: "{{ '🔧 MAINTENANCE MODE' if (maintenance_mode | default(false) | bool) else '🔄 DISASTER RECOVERY MODE' }}"
+  when: "'pihole_target' in group_names"
+
+- name: Show deployment mode details
+  ansible.builtin.debug:
+    msg: "{{ '⏭️ Skipping backup restore, config from Git only' if (maintenance_mode | default(false) | bool) else '   Will restore runtime state from backup/seedbox' }}"
+  when: "'pihole_target' in group_names"
+
+- name: "═══════════════════════════════════════════════════════════════════"
+  ansible.builtin.debug:
+    msg: ""
+  when: "'pihole_target' in group_names"
+
+# Check for local backups FIRST (skip in maintenance mode)
+- name: Check for backups in pihole backup dir
+  ansible.builtin.find:
+    paths: "{{ pihole_backup_dir }}"
+    patterns: "*.tar.gz"
+  register: available_backups
+  when:
+    - "'pihole_target' in group_names"
+    - not (maintenance_mode | default(false) | bool)
+
+# Set flag to track if restore was successful
+- name: Initialize restore status
+  ansible.builtin.set_fact:
+    restore_completed: false
+  when:
+    - "'pihole_target' in group_names"
+    - not (maintenance_mode | default(false) | bool)
+
+# PATH 1: Local backup found → restore from backup
+- name: Restore from local backup
+  block:
+    - include_tasks: backup-restore.yml
+    - name: Mark restore as completed
+      ansible.builtin.set_fact:
+        restore_completed: true
+  rescue:
+    - name: Local backup restore failed, will try seedbox
+      ansible.builtin.debug:
+        msg: "⚠️ Local backup restore failed, attempting seedbox restore"
+  when:
+    - "'pihole_target' in group_names"
+    - not (maintenance_mode | default(false) | bool)
+    - available_backups.matched > 0
+
+# PATH 2: No local backup OR local backup failed → try seedbox
+- name: Restore from seedbox (fallback)
+  block:
+    - include_tasks: seedbox-restore.yml
+    - name: Mark restore as completed
+      ansible.builtin.set_fact:
+        restore_completed: true
+      when: seedbox_found | default(false)
+  when:
+    - "'pihole_target' in group_names"
+    - not (maintenance_mode | default(false) | bool)
+    - not restore_completed | default(false)
+
+# PATH 3: All restores failed → bootstrap fresh install
+- name: Bootstrap fresh PiHole install
+  import_tasks: bootstrap.yml
+  when:
+    - "'pihole_target' in group_names"
+    - not (maintenance_mode | default(false) | bool)
+    - not restore_completed | default(false)
+
+# Summary of what happened
+- name: Deployment summary
+  ansible.builtin.debug:
+    msg: >-
+      {{ '🔧 Maintenance deploy completed - docker-compose updated'
+         if (maintenance_mode | default(false) | bool)
+         else ('✅ DR restore completed successfully' if restore_completed | default(false) else '🆕 Fresh install - bootstrap ran') }}
+  when: "'pihole_target' in group_names"
