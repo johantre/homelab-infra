@@ -14,64 +14,53 @@ sudo ./create-install-usb.sh --update
 
 ## Installation Flow
 
-```
-                                    create-install-usb.sh
-                                            |
-                    +-----------------------+-----------------------+
-                    |                                               |
-                x86 (Ventoy)                                   Pi4 (Direct flash)
-                    |                                               |
-            +-------+-------+                               +-------+-------+
-            |               |                               |               |
-        USB creates:    USB creates:                    USB creates:    USB creates:
-        - Ventoy        - ISO                           - Boot image    - cloud-init
-        - ISO           - autoinstall.yaml              - cloud-init    - Target image
-        - setup script  - ventoy.json                   - flash script  - setup-machine.sh
-            |               |                               |               |
-            +-------+-------+                               +-------+-------+
-                    |                                               |
-            Boot from USB                                   Boot from USB
-                    |                                               |
-            Ventoy menu -> Select ISO                       Login: ubuntu / password
-                    |                                               |
-            "Try or Install Ubuntu"                         Run: sudo flash-to-m2
-            (GRUB menu, select this)                                |
-                    |                                       Type "yes" to confirm
-            Autoinstall runs:                                       |
-            - Keyboard BE                                   Flash to M.2 SSD + cloud-init
-            - User account                                          |
-            - [Interactive: disk selection]                 Power off, remove USB
-                    |                                               |
-            Reboot                                          Boot from M.2
-                    |                                               |
-            Firstboot service runs                          Firstboot service runs
-            setup-machine.sh                                setup-machine.sh
-                    |                                               |
-            +-------+-------+-------+-------+-------+-------+-------+
-            |       |       |       |       |       |       |
-         Hostname  SSH   Sudo    WiFi   GitHub   Cleanup  Self-
-                   Key          Config  Runner           Destruct
+```mermaid
+flowchart TD
+    Script(["create-install-usb.sh"])
+
+    Script -->|x86| X86USB
+    Script -->|Pi4| PI4USB
+
+    subgraph X86F ["x86 — Ventoy"]
+        X86USB["USB contains:\nVentoy + Ubuntu Desktop ISO\nautoinstall.yaml\nsetup-machine.sh\nventoy.json"]
+        X86BOOT["Boot from USB"]
+        X86VENTOY["Ventoy menu → Select ISO"]
+        X86GRUB["GRUB: Try or Install Ubuntu"]
+        X86AUTO["Autoinstall:\nKeyboard BE · User account\nDisk selection interactive"]
+        X86REBOOT["Reboot"]
+        X86FIRST["Firstboot service\nruns setup-machine.sh"]
+        X86USB --> X86BOOT --> X86VENTOY --> X86GRUB --> X86AUTO --> X86REBOOT --> X86FIRST
+    end
+
+    subgraph PI4F ["Pi4 — Direct flash"]
+        PI4USB["USB contains:\nBoot image · Target image for M.2\nflash-to-m2.sh\nsetup-machine.sh\ncloud-init"]
+        PI4BOOT["Boot from USB"]
+        PI4LOGIN["Login: ubuntu / password"]
+        PI4FLASH["Run: sudo flash-to-m2"]
+        PI4CONFIRM["Type 'yes' to confirm"]
+        PI4WRITE["Flash to M.2 SSD + cloud-init"]
+        PI4REMOVE["Power off, remove USB"]
+        PI4BOOTM2["Boot from M.2"]
+        PI4FIRST["Firstboot service\nruns setup-machine.sh"]
+        PI4USB --> PI4BOOT --> PI4LOGIN --> PI4FLASH --> PI4CONFIRM --> PI4WRITE --> PI4REMOVE --> PI4BOOTM2 --> PI4FIRST
+    end
+
+    X86FIRST --> DONE(["Configured:\nHostname · SSH Key · Sudo\nWiFi · GitHub Runner · Cleanup"])
+    PI4FIRST --> DONE
 ```
 
 ## When is Network Required?
 
-```
-PHASE                           NETWORK NEEDED?     WHY?
-─────────────────────────────────────────────────────────────────────
-USB Creation (this machine)     Yes                 Download ISO, Ventoy
+| Phase | Network needed? | Why |
+|-------|-----------------|-----|
+| USB Creation (this machine) | Yes | Download ISO, Ventoy |
+| Boot & Install (target) | Recommended * | x86 installer may need network |
+| Firstboot script (target) | **YES — ethernet required** | GitHub CLI + Runner download (~220 MB) |
+| After firstboot | Optional | WiFi configured by script |
 
-Boot & Install (target)         Recommended *       x86 installer may need network
+\* x86 autoinstall may fail without network. Pi4 works offline.
 
-Firstboot Script (target)       YES !               GitHub CLI install
-                                ETHERNET            GitHub Runner download
-                                REQUIRED            (~220MB)
-
-After Firstboot                 Optional            WiFi configured by script
-─────────────────────────────────────────────────────────────────────
-
-* x86 autoinstall may fail without network. Pi4 works offline.
-! CRITICAL: Plug in ethernet BEFORE starting install to avoid errors
-```
+> **CRITICAL:** Plug in ethernet **before** starting install to avoid errors during firstboot.
 
 ## x86 vs Raspberry Pi 4
 
@@ -181,32 +170,27 @@ sudo ./create-install-usb.sh --update
 - Check network connectivity
 
 ### Pi4: Boots from M.2 instead of USB
+
 The Pi4 sees both the M.2 SSD (via USB bridge in Argon One case) and the USB stick as USB devices.
 It cannot distinguish boot priority between them.
+
+```mermaid
+flowchart TD
+    USBStick["USB Stick\nUbuntu installer"]
+    M2SSD["M.2 SSD\nvia USB bridge"]
+    Pi4{{"Pi4\nBoth appear as USB\npicks M.2!"}}
+    Problem["Boots from M.2\nnot from USB stick"]
+    Fix["Fix: Disconnect M.2 USB bridge\nthen boot from USB stick"]
+
+    USBStick -- "USB device" --> Pi4
+    M2SSD -- "USB device" --> Pi4
+    Pi4 --> Problem
+    Problem -. workaround .-> Fix
+```
 
 **Solution:**
 1. **To boot from USB stick**: Disconnect the USB bridge cable inside the Argon One case (the small cable connecting M.2 to Pi4's USB)
 2. **After flashing**: Reconnect the USB bridge cable before rebooting to boot from M.2
-
-```
-Pi4 Boot Priority Issue:
-┌─────────────┐     ┌─────────────┐
-│  USB Stick  │     │   M.2 SSD   │
-│  (Ubuntu)   │     │  (via USB)  │
-└──────┬──────┘     └──────┬──────┘
-       │                   │
-       │   Both appear as  │
-       │   USB devices!    │
-       └─────────┬─────────┘
-                 │
-         ┌───────▼───────┐
-         │     Pi4       │
-         │ "Which USB?"  │
-         │ (picks M.2)   │
-         └───────────────┘
-
-Fix: Disconnect M.2 USB bridge → Boot from USB stick → Flash → Reconnect → Reboot
-```
 
 ### Pi4: Undervoltage detected
 If you see "Under-voltage detected" warnings:
@@ -243,8 +227,10 @@ If you see "Under-voltage detected" warnings:
 ```
 
 ## TODO's
-- [ ] Add mermaid diagrams to this readme
 - [ ] Add advice for scenarios where 2 runners can be triggered
+
+### Completed (01/03)
+- [x] Mermaid diagrams added (Installation Flow, Pi4 Boot Priority)
 
 ### Completed (28/02)
 - [x] `--update` mode added: update hostname/labels on existing USB without re-flash
