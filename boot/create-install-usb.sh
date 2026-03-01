@@ -2122,6 +2122,213 @@ MOTD_EOF
 }
 
 #==============================================================================
+# UPDATE MODE - Update hostname/labels on existing USB without re-flashing
+#==============================================================================
+
+update_usb() {
+    echo -e "${GREEN}========================================${NC}"
+    echo -e "${GREEN}  USB Update Mode                      ${NC}"
+    echo -e "${GREEN}========================================${NC}"
+    echo -e "${BLUE}Update hostname/runner labels on existing USB${NC}"
+    echo -e "${BLUE}No re-flash required!${NC}"
+    echo
+
+    # Select USB device
+    echo -e "${GREEN}Step 1: Select USB Device${NC}"
+    echo
+    select_usb_device
+
+    echo
+    echo -e "${GREEN}Step 2: Detecting USB type...${NC}"
+
+    local setup_script=""
+    local usb_type=""
+    local mount_point=""
+
+    # Try x86 Ventoy first (partition 1, exFAT)
+    local data_part=""
+    if [ -b "/dev/${USB_DEVICE}1" ]; then
+        data_part="/dev/${USB_DEVICE}1"
+    elif [ -b "/dev/${USB_DEVICE}p1" ]; then
+        data_part="/dev/${USB_DEVICE}p1"
+    fi
+
+    if [ -n "$data_part" ]; then
+        local fs_type
+        fs_type=$(blkid -s TYPE -o value "$data_part" 2>/dev/null)
+        if [ "$fs_type" = "exfat" ] || [ "$fs_type" = "vfat" ]; then
+            mkdir -p /mnt/ventoy
+            umount "$data_part" 2>/dev/null || true
+            umount /media/*/Ventoy 2>/dev/null || true
+            umount /run/media/*/Ventoy 2>/dev/null || true
+            modprobe exfat 2>/dev/null || true
+            sleep 1
+            if mount -t exfat -o rw "$data_part" /mnt/ventoy 2>/dev/null \
+               || mount -o rw "$data_part" /mnt/ventoy 2>/dev/null; then
+                if [ -f "/mnt/ventoy/SETUP/setup-machine.sh" ]; then
+                    setup_script="/mnt/ventoy/SETUP/setup-machine.sh"
+                    usb_type="x86"
+                    mount_point="/mnt/ventoy"
+                    echo -e "${GREEN}Detected: x86 Ventoy USB${NC}"
+                else
+                    umount /mnt/ventoy 2>/dev/null || true
+                fi
+            fi
+        fi
+    fi
+
+    # Try Pi4 (partition 2, ext4 rootfs)
+    if [ -z "$usb_type" ]; then
+        local rootfs_part=""
+        if [ -b "/dev/${USB_DEVICE}2" ]; then
+            rootfs_part="/dev/${USB_DEVICE}2"
+        elif [ -b "/dev/${USB_DEVICE}p2" ]; then
+            rootfs_part="/dev/${USB_DEVICE}p2"
+        fi
+
+        if [ -n "$rootfs_part" ]; then
+            local fs_type
+            fs_type=$(blkid -s TYPE -o value "$rootfs_part" 2>/dev/null)
+            if [ "$fs_type" = "ext4" ]; then
+                mkdir -p /mnt/rootfs
+                if mount -o rw "$rootfs_part" /mnt/rootfs 2>/dev/null; then
+                    if [ -f "/mnt/rootfs/opt/pi4-flash/setup-machine.sh" ]; then
+                        setup_script="/mnt/rootfs/opt/pi4-flash/setup-machine.sh"
+                        usb_type="pi4"
+                        mount_point="/mnt/rootfs"
+                        echo -e "${GREEN}Detected: Pi4 USB${NC}"
+                    else
+                        umount /mnt/rootfs 2>/dev/null || true
+                    fi
+                fi
+            fi
+        fi
+    fi
+
+    if [ -z "$usb_type" ]; then
+        echo -e "${RED}ERROR: Could not find setup-machine.sh on USB.${NC}"
+        echo -e "${RED}Ensure this is a USB created by this script and is properly inserted.${NC}"
+        exit 1
+    fi
+
+    # Extract current hostname from setup-machine.sh
+    local old_hostname
+    old_hostname=$(grep "hostnamectl set-hostname" "$setup_script" | awk '{print $NF}')
+
+    if [ -z "$old_hostname" ]; then
+        echo -e "${RED}ERROR: Could not read current hostname from setup script.${NC}"
+        umount "$mount_point" 2>/dev/null || true
+        exit 1
+    fi
+
+    echo
+    echo -e "${GREEN}Step 3: What to update?${NC}"
+    echo -e "${BLUE}Current hostname: ${YELLOW}$old_hostname${NC}"
+    echo
+
+    # Ask for new hostname
+    echo -ne "${YELLOW}New hostname [$old_hostname]: ${NC}"
+    read -r NEW_HOSTNAME
+    NEW_HOSTNAME=${NEW_HOSTNAME:-$old_hostname}
+
+    # Ask for role label
+    local current_labels="self-hosted,linux,<arch>"
+    # Check if a role label is already present
+    local existing_role_label
+    existing_role_label=$(grep -- '--labels' "$setup_script" | \
+        grep -oP '"self-hosted,linux,\$\(uname -m\),\K[^"]+' 2>/dev/null || true)
+    if [ -n "$existing_role_label" ]; then
+        current_labels="self-hosted,linux,<arch>,$existing_role_label"
+    fi
+
+    echo
+    echo -e "${BLUE}Runner labels:${NC}"
+    echo -e "  Current: ${YELLOW}$current_labels${NC}"
+    echo -e "  Role label examples: homeassistant, pihole"
+    echo -ne "${YELLOW}Role label (leave empty to keep as-is): ${NC}"
+    read -r ROLE_LABEL
+
+    # Confirm changes
+    echo
+    echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${YELLOW}  Planned changes:${NC}"
+    echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    if [ "$NEW_HOSTNAME" != "$old_hostname" ]; then
+        echo -e "  Hostname:  ${RED}$old_hostname${NC} → ${GREEN}$NEW_HOSTNAME${NC}"
+    else
+        echo -e "  Hostname:  ${BLUE}$old_hostname${NC} (unchanged)"
+    fi
+    if [ -n "$ROLE_LABEL" ]; then
+        echo -e "  Labels:    self-hosted,linux,<arch> → ${GREEN}self-hosted,linux,<arch>,$ROLE_LABEL${NC}"
+    else
+        echo -e "  Labels:    ${BLUE}$current_labels${NC} (unchanged)"
+    fi
+    echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo
+    echo -ne "${YELLOW}Proceed? (y/N): ${NC}"
+    read -r confirm
+    if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then
+        echo -e "${YELLOW}Cancelled.${NC}"
+        umount "$mount_point" 2>/dev/null || true
+        exit 0
+    fi
+
+    echo
+    echo -e "${GREEN}Step 4: Applying changes...${NC}"
+
+    # Update hostname in setup-machine.sh
+    if [ "$NEW_HOSTNAME" != "$old_hostname" ]; then
+        sed -i "s|${old_hostname}|${NEW_HOSTNAME}|g" "$setup_script"
+        echo -e "  ${GREEN}✓ Hostname updated in setup-machine.sh${NC}"
+
+        # For x86: also update autoinstall.yaml and user-data
+        if [ "$usb_type" = "x86" ]; then
+            for f in "$mount_point/SETUP/autoinstall.yaml" "$mount_point/SETUP/user-data"; do
+                [ -f "$f" ] && sed -i "s|${old_hostname}|${NEW_HOSTNAME}|g" "$f" \
+                    && echo -e "  ${GREEN}✓ Hostname updated in $(basename $f)${NC}"
+            done
+        fi
+    fi
+
+    # Update runner labels in setup-machine.sh
+    if [ -n "$ROLE_LABEL" ]; then
+        local old_label_line='--labels "self-hosted,linux,$(uname -m)"'
+        local new_label_line="--labels \"self-hosted,linux,\$(uname -m),$ROLE_LABEL\""
+        # Also handle case where a role label already exists (replace it)
+        if [ -n "$existing_role_label" ]; then
+            old_label_line="--labels \"self-hosted,linux,\$(uname -m),$existing_role_label\""
+        fi
+        sed -i "s|${old_label_line}|${new_label_line}|g" "$setup_script"
+        echo -e "  ${GREEN}✓ Runner labels updated in setup-machine.sh${NC}"
+
+        # For x86: also update autoinstall.yaml and user-data
+        if [ "$usb_type" = "x86" ]; then
+            for f in "$mount_point/SETUP/autoinstall.yaml" "$mount_point/SETUP/user-data"; do
+                [ -f "$f" ] && sed -i "s|${old_label_line}|${new_label_line}|g" "$f" \
+                    && echo -e "  ${GREEN}✓ Labels updated in $(basename $f)${NC}"
+            done
+        fi
+    fi
+
+    # Sync and unmount
+    sync
+    umount "$mount_point"
+    rmdir "$mount_point" 2>/dev/null || true
+
+    echo
+    echo -e "${GREEN}========================================${NC}"
+    echo -e "${GREEN}  USB Updated Successfully!             ${NC}"
+    echo -e "${GREEN}========================================${NC}"
+    echo
+    echo -e "${YELLOW}Summary:${NC}"
+    echo "  USB type:  $usb_type"
+    echo "  Hostname:  $NEW_HOSTNAME"
+    [ -n "$ROLE_LABEL" ] && echo "  Role:      $ROLE_LABEL"
+    echo
+    echo -e "${BLUE}No re-flash needed. USB is ready to use.${NC}"
+}
+
+#==============================================================================
 # MAIN
 #==============================================================================
 
@@ -2141,6 +2348,36 @@ echo -e "${NC}"
 if [[ $EUID -ne 0 ]]; then
    echo -e "${RED}This script must be run as root (sudo)${NC}"
    exit 1
+fi
+
+# Parse arguments
+MODE="create"
+for arg in "$@"; do
+    case "$arg" in
+        --update|-u)
+            MODE="update"
+            ;;
+        --help|-h)
+            echo "Usage: sudo $0 [OPTIONS]"
+            echo ""
+            echo "Options:"
+            echo "  (none)          Create a new bootable install USB (full flash)"
+            echo "  --update, -u    Update hostname/runner labels on existing USB (no re-flash)"
+            echo "  --help,   -h    Show this help"
+            echo ""
+            echo "Examples:"
+            echo "  sudo $0                  # Create new USB"
+            echo "  sudo $0 --update         # Update existing USB"
+            exit 0
+            ;;
+    esac
+done
+
+# Dispatch to update mode if requested
+if [ "$MODE" = "update" ]; then
+    check_dependencies
+    update_usb
+    exit 0
 fi
 
 # Check dependencies

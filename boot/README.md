@@ -5,7 +5,11 @@ Single script to create bootable USB for automated Ubuntu installation on x86 an
 ## Quick Start
 
 ```bash
+# Create a new install USB (full flash)
 sudo ./create-install-usb.sh
+
+# Update hostname/labels on an existing USB (no re-flash)
+sudo ./create-install-usb.sh --update
 ```
 
 ## Installation Flow
@@ -120,6 +124,44 @@ After successful installation:
   ```
 - Or keep USB secured for future reinstalls
 
+## Update Mode (`--update`)
+
+When you already have a working USB and only want to change the **hostname** or **runner labels** (e.g. to reuse the same USB for a different machine), use update mode instead of re-flashing.
+
+```bash
+sudo ./create-install-usb.sh --update
+```
+
+**What it does:**
+1. Detects the USB type automatically (x86 Ventoy or Pi4)
+2. Reads the current hostname from the embedded setup script
+3. Asks for a new hostname and optional runner role label
+4. Updates the relevant files in-place (no re-flash, no ISO download)
+5. Unmounts safely
+
+**Files updated:**
+
+| USB type | Files |
+|----------|-------|
+| x86      | `SETUP/setup-machine.sh`, `SETUP/autoinstall.yaml`, `SETUP/user-data` |
+| Pi4      | `opt/pi4-flash/setup-machine.sh` |
+
+**When to use:**
+
+| Scenario | Command |
+|----------|---------|
+| Reuse USB for different machine (new hostname) | `--update` |
+| Add role label (homeassistant / pihole) | `--update` |
+| Different OS version, architecture, or user | Full `create` run |
+
+**Example: prepare USB for PiHole machine**
+```bash
+sudo ./create-install-usb.sh --update
+# Select USB device
+# New hostname: pihole-pi4
+# Role label:   pihole
+```
+
 ## Troubleshooting
 
 ### "No USB devices found"
@@ -203,6 +245,9 @@ If you see "Under-voltage detected" warnings:
 ## TODO's
 - [ ] Add mermaid diagrams to this readme
 - [ ] Add advice for scenarios where 2 runners can be triggered
+
+### Completed (28/02)
+- [x] `--update` mode added: update hostname/labels on existing USB without re-flash
 
 ### Completed (16/02)
 - [x] USB bridge boot order documented (troubleshooting section)

@@ -104,6 +104,13 @@
     msg: "Source dir not found: {{ ha_config_repo_dir }}"
   when: not _src.stat.exists
 
+# Set hostname (so one USB works for both HA and PiHole)
+- name: Set hostname to ha_hostname
+  ansible.builtin.hostname:
+    name: "{{ ha_hostname }}"
+  become: true
+  when: "'ha_target' in group_names and ansible_hostname != ha_hostname"
+
 # Ensure target can run apt/system tasks without prompts (CI-friendly)
 - name: Include sudoers setup for target
   ansible.builtin.include_tasks: sudoers.yml

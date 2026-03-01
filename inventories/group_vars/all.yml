@@ -8,6 +8,7 @@ base_home: "/home/{{ ansible_user }}"
 base_dir: "{{ base_home }}/homelab/target"
 
 # --- Homeassistant
+ha_hostname: "homeassistant-ansible"
 ha_version: "stable"
 ha_version_override: ""
 ha_project: "ha-stack-ansible"
@@ -68,6 +69,7 @@ argon_fan_curve_default: |
   75=100
 
 # --- PiHole
+pihole_hostname: "pihole-ansible"
 pihole_version: "latest"
 pihole_project: "pihole-stack-ansible"
 pihole_stack_dir: "{{ base_dir }}/pihole-stack-ansible"

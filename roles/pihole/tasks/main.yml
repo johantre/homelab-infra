@@ -9,6 +9,13 @@
   ansible.builtin.setup:
     gather_subset: ['min']
 
+# Set hostname (so one USB works for both HA and PiHole)
+- name: Set hostname to pihole_hostname
+  ansible.builtin.hostname:
+    name: "{{ pihole_hostname }}"
+  become: true
+  when: "'pihole_target' in group_names and ansible_hostname != pihole_hostname"
+
 # Ensure target can run apt/system tasks without prompts (CI-friendly)
 - name: Include sudoers setup for target
   ansible.builtin.include_tasks: sudoers.yml
