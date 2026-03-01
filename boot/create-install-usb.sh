@@ -2211,6 +2211,18 @@ update_usb() {
         exit 1
     fi
 
+    # Resolve arch suffix and runtime arch value based on USB type:
+    #   x86 USB → hostname suffix "-x86",  runner label arch "x86_64"
+    #   Pi4 USB → hostname suffix "-pi4",  runner label arch "aarch64"
+    local arch_suffix arch_value
+    if [ "$usb_type" = "x86" ]; then
+        arch_suffix="x86"
+        arch_value="x86_64"
+    else
+        arch_suffix="pi4"
+        arch_value="aarch64"
+    fi
+
     # Extract current hostname from setup-machine.sh
     local old_hostname
     old_hostname=$(grep "hostnamectl set-hostname" "$setup_script" | awk '{print $NF}')
@@ -2221,24 +2233,33 @@ update_usb() {
         exit 1
     fi
 
+    # Split hostname into device name + arch suffix.
+    # Convention: <device>-<arch>  e.g. "pihole-x86", "homeassistant-pi4"
+    # Strip the known suffix so the user only needs to enter the device name.
+    local old_device_name="${old_hostname%-${arch_suffix}}"
+
     echo
     echo -e "${GREEN}Step 3: What to update?${NC}"
     echo -e "${BLUE}Current hostname: ${YELLOW}$old_hostname${NC}"
+    echo -e "${BLUE}  (device: ${YELLOW}$old_device_name${BLUE}, arch suffix: ${YELLOW}-${arch_suffix}${BLUE} from USB type)${NC}"
     echo
 
-    # Ask for new hostname
-    echo -ne "${YELLOW}New hostname [$old_hostname]: ${NC}"
-    read -r NEW_HOSTNAME
-    NEW_HOSTNAME=${NEW_HOSTNAME:-$old_hostname}
+    # Ask for device name only — arch suffix is fixed by USB type
+    echo -ne "${YELLOW}Device name [$old_device_name]: ${NC}"
+    read -r new_device_name
+    new_device_name=${new_device_name:-$old_device_name}
+    local NEW_HOSTNAME="${new_device_name}-${arch_suffix}"
+    echo -e "${BLUE}  → Hostname will be: ${GREEN}${NEW_HOSTNAME}${NC}"
 
     # Ask for role label
-    local current_labels="self-hosted,linux,<arch>"
     # Check if a role label is already present
     local existing_role_label
     existing_role_label=$(grep -- '--labels' "$setup_script" | \
         grep -oP '"self-hosted,linux,\$\(uname -m\),\K[^"]+' 2>/dev/null || true)
+
+    local current_labels="self-hosted,linux,$arch_value"
     if [ -n "$existing_role_label" ]; then
-        current_labels="self-hosted,linux,<arch>,$existing_role_label"
+        current_labels="self-hosted,linux,$arch_value,$existing_role_label"
     fi
 
     echo
@@ -2259,7 +2280,7 @@ update_usb() {
         echo -e "  Hostname:  ${BLUE}$old_hostname${NC} (unchanged)"
     fi
     if [ -n "$ROLE_LABEL" ]; then
-        echo -e "  Labels:    self-hosted,linux,<arch> → ${GREEN}self-hosted,linux,<arch>,$ROLE_LABEL${NC}"
+        echo -e "  Labels:    $current_labels → ${GREEN}self-hosted,linux,$arch_value,$ROLE_LABEL${NC}"
     else
         echo -e "  Labels:    ${BLUE}$current_labels${NC} (unchanged)"
     fi
