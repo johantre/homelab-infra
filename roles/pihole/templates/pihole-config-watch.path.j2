@@ -1,0 +1,10 @@
+[Unit]
+Description=Watch PiHole config for changes
+After=docker.service
+
+[Path]
+PathChanged={{ pihole_etc_dir }}/pihole.toml
+Unit=pihole-backup-flag.service
+
+[Install]
+WantedBy=multi-user.target

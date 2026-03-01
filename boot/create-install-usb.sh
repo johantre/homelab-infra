@@ -514,7 +514,7 @@ generate_autoinstall_yaml() {
       - id: backup-mount
         type: mount
         device: backup-format
-        path: /backup"
+        path: /mnt/backup"
     else
         # Interactive storage selection
         storage_config="
@@ -1125,7 +1125,7 @@ if [ "$DISK_SIZE_GB" -gt 100 ]; then
             echo -e "${CYAN}========================================${NC}"
             echo -e "${YELLOW}Size: ${BACKUP_SIZE}${NC}"
             echo
-            echo -e "${YELLOW}This partition may contain Home Assistant backups.${NC}"
+            echo -e "${YELLOW}This partition may contain existing backups (HA, PiHole, ...).${NC}"
             echo -ne "${YELLOW}Preserve existing data? (yes/no): ${NC}"
             read PRESERVE_BACKUP
 

@@ -1,0 +1,6 @@
+[Unit]
+Description=Mark PiHole backup as pending (triggered by config change)
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/touch /run/pihole-backup-pending

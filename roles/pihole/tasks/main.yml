@@ -53,7 +53,16 @@
   loop:
     - "{{ pihole_stack_dir }}"
     - "{{ pihole_etc_dir }}"
-    - "{{ pihole_backup_dir }}"
+
+- name: Ensure PiHole backup directory exists on host
+  ansible.builtin.file:
+    path: "{{ pihole_backup_dir }}"
+    state: directory
+    owner: "{{ runtime_uid }}"
+    group: "{{ runtime_gid }}"
+    mode: "0755"
+  become: true
+  when: "'pihole_target' in group_names"
 
 - name: Fail fast if we cannot write to pihole_stack_dir
   ansible.builtin.file:
@@ -96,6 +105,11 @@
   ansible.builtin.debug:
     msg: "Compose up ran."
   changed_when: _compose_changed
+
+# Deploy backup script + systemd timer/path-watch (target only)
+- name: Include backup setup
+  ansible.builtin.include_tasks: backup-setup.yml
+  when: "'pihole_target' in group_names"
 
 # ============================================================================
 # DISASTER RECOVERY LOGIC

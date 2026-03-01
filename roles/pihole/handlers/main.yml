@@ -14,6 +14,11 @@
     state: restarted
   become: true
 
+- name: reload systemd
+  ansible.builtin.systemd:
+    daemon_reload: true
+  become: true
+
 - name: Restart pihole
   ansible.builtin.shell: |
     sg docker -c 'docker restart {{ pihole_container_name }}'

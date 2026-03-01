@@ -1,0 +1,144 @@
+#!/bin/bash
+# pihole-backup.sh - Backup PiHole config + sync pihole.toml to Git
+#
+# Triggered nightly by pihole-backup.timer (03:00).
+# Runs only when:
+#   - /run/pihole-backup-pending exists  (set by pihole-config-watch.path on change)
+#   - OR it is the 1st of the month      (monthly unconditional safety net)
+#
+# Backup contents: pihole.toml + gravity.db (no container stop needed)
+# Git sync:        pihole.toml with pwhash stripped
+
+set -euo pipefail
+
+FLAG_FILE="/run/pihole-backup-pending"
+PIHOLE_ETC="{{ pihole_etc_dir }}"
+BACKUP_DIR="{{ pihole_backup_dir }}"
+KEEP_BACKUPS=7
+
+ENV_FILE="/etc/pihole-backup.env"
+GH_USERNAME="{{ gh_username }}"
+GH_REPO="homelab-config"
+CONFIG_SUBDIR="pihole"
+
+log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] pihole-backup: $*"; }
+
+# ============================================================
+# Decide whether to run
+# ============================================================
+DAY_OF_MONTH=$(date +%d)
+MONTHLY_RUN=false
+CHANGE_PENDING=false
+
+[ "$DAY_OF_MONTH" = "01" ] && MONTHLY_RUN=true
+[ -f "$FLAG_FILE" ]        && CHANGE_PENDING=true
+
+if [ "$MONTHLY_RUN" = false ] && [ "$CHANGE_PENDING" = false ]; then
+    log "No changes pending and not monthly run — skipping"
+    exit 0
+fi
+
+$MONTHLY_RUN    && log "Reason: monthly scheduled run (day 1)"
+$CHANGE_PENDING && log "Reason: config change detected"
+
+# Clear the flag now — even if backup fails we don't want infinite retries
+rm -f "$FLAG_FILE"
+
+# ============================================================
+# STEP 1: Create backup
+# ============================================================
+log "Starting backup..."
+
+TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+BACKUP_FILE="$BACKUP_DIR/pihole-backup-$TIMESTAMP.tar.gz"
+TMPDIR=$(mktemp -d)
+trap 'rm -rf "$TMPDIR"' EXIT
+
+mkdir -p "$BACKUP_DIR"
+
+# pihole.toml - small config file, safe to copy directly
+if [ -f "$PIHOLE_ETC/pihole.toml" ]; then
+    cp "$PIHOLE_ETC/pihole.toml" "$TMPDIR/pihole.toml"
+else
+    log "WARNING: pihole.toml not found at $PIHOLE_ETC"
+fi
+
+# gravity.db - use Python sqlite3 backup API for consistency while FTL runs
+if [ -f "$PIHOLE_ETC/gravity.db" ]; then
+    python3 -c "
+import sqlite3
+src = sqlite3.connect('$PIHOLE_ETC/gravity.db')
+dst = sqlite3.connect('$TMPDIR/gravity.db')
+src.backup(dst)
+dst.close()
+src.close()
+" && log "gravity.db backed up (consistent copy)" \
+  || { log "WARNING: Python sqlite3 backup failed, falling back to cp"; cp "$PIHOLE_ETC/gravity.db" "$TMPDIR/gravity.db" 2>/dev/null || true; }
+fi
+
+# Create archive
+tar -czf "$BACKUP_FILE" -C "$TMPDIR" .
+BACKUP_SIZE=$(du -sh "$BACKUP_FILE" | cut -f1)
+log "Backup created: $(basename "$BACKUP_FILE") ($BACKUP_SIZE)"
+
+# ============================================================
+# STEP 2: Rotate old backups (keep last N)
+# ============================================================
+REMOVED=$(ls -t "$BACKUP_DIR"/pihole-backup-*.tar.gz 2>/dev/null | tail -n +$((KEEP_BACKUPS+1)))
+if [ -n "$REMOVED" ]; then
+    echo "$REMOVED" | xargs rm -f
+    log "Rotated old backups (keeping last $KEEP_BACKUPS)"
+fi
+
+# ============================================================
+# STEP 3: Git sync pihole.toml (pwhash stripped)
+# ============================================================
+if [ ! -f "$ENV_FILE" ]; then
+    log "No $ENV_FILE found, skipping git sync"
+    exit 0
+fi
+
+# shellcheck source=/dev/null
+source "$ENV_FILE"
+
+if [ -z "${GH_PAT:-}" ]; then
+    log "GH_PAT not set in $ENV_FILE, skipping git sync"
+    exit 0
+fi
+
+if [ ! -f "$PIHOLE_ETC/pihole.toml" ]; then
+    log "pihole.toml missing, skipping git sync"
+    exit 0
+fi
+
+# Strip pwhash before comparing / committing
+STRIPPED_TOML=$(sed 's/pwhash = ".*"/pwhash = ""/' "$PIHOLE_ETC/pihole.toml")
+
+GITDIR=$(mktemp -d)
+trap 'rm -rf "$TMPDIR" "$GITDIR"' EXIT
+
+GH_REPO_URL="https://${GH_USERNAME}:${GH_PAT}@github.com/${GH_USERNAME}/${GH_REPO}.git"
+
+log "Cloning config repo..."
+git clone --depth=1 --quiet "$GH_REPO_URL" "$GITDIR"
+
+REPO_TOML="$GITDIR/$CONFIG_SUBDIR/pihole.toml"
+CURRENT_HASH=$(echo "$STRIPPED_TOML" | sha256sum | cut -d' ' -f1)
+REPO_HASH=$(sha256sum "$REPO_TOML" 2>/dev/null | cut -d' ' -f1 || echo "none")
+
+if [ "$CURRENT_HASH" = "$REPO_HASH" ]; then
+    log "pihole.toml unchanged, no git sync needed"
+    exit 0
+fi
+
+log "pihole.toml changed, syncing to git..."
+echo "$STRIPPED_TOML" > "$REPO_TOML"
+
+cd "$GITDIR"
+git config user.email "pihole@$(hostname)"
+git config user.name "PiHole Auto-sync ($(hostname))"
+git add "$CONFIG_SUBDIR/pihole.toml"
+git commit -m "auto: sync pihole.toml from $(hostname) [$(date '+%Y-%m-%d')]"
+git push --quiet "$GH_REPO_URL" HEAD:main
+
+log "Git sync complete"

@@ -75,7 +75,7 @@ pihole_project: "pihole-stack-ansible"
 pihole_stack_dir: "{{ base_dir }}/pihole-stack-ansible"
 pihole_etc_dir: "{{ pihole_stack_dir }}/data/pihole-etc"
 pihole_dnsmasq_dir: "{{ pihole_stack_dir }}/data/dnsmasq-etc"
-pihole_backup_dir: "{{ pihole_stack_dir }}/backup"
+pihole_backup_dir: "/mnt/backup/pihole"
 pihole_config_repo_dir: "{{ lookup('env', 'HOME') }}/homelab/config/pihole"
 pihole_container_name: pihole_ansible
 pihole_host_port_http: 80

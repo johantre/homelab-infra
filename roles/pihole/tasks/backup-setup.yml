@@ -1,0 +1,85 @@
+---
+# Deploy backup + git sync for PiHole
+#
+# Flow:
+#   pihole.toml wijzigt  →  pihole-config-watch.path
+#                        →  pihole-backup-flag.service (touch /run/pihole-backup-pending)
+#   elke nacht 03:00     →  pihole-backup.timer
+#                        →  pihole-backup.service  (runs als vlag aanwezig OF dag 1)
+
+- name: Install git (required for git sync)
+  ansible.builtin.apt:
+    name: git
+    state: present
+    update_cache: false
+  become: true
+
+- name: Deploy pihole-backup.sh
+  ansible.builtin.template:
+    src: pihole-backup.sh.j2
+    dest: /usr/local/bin/pihole-backup.sh
+    mode: "0750"
+    owner: root
+    group: root
+  become: true
+
+- name: Deploy credentials env file
+  ansible.builtin.template:
+    src: pihole-backup.env.j2
+    dest: /etc/pihole-backup.env
+    mode: "0600"
+    owner: root
+    group: root
+  become: true
+  no_log: true
+
+- name: Deploy pihole-backup.service
+  ansible.builtin.copy:
+    src: pihole-backup.service
+    dest: /etc/systemd/system/pihole-backup.service
+    mode: "0644"
+  become: true
+  notify: reload systemd
+
+- name: Deploy pihole-backup.timer
+  ansible.builtin.copy:
+    src: pihole-backup.timer
+    dest: /etc/systemd/system/pihole-backup.timer
+    mode: "0644"
+  become: true
+  notify: reload systemd
+
+- name: Deploy pihole-backup-flag.service
+  ansible.builtin.copy:
+    src: pihole-backup-flag.service
+    dest: /etc/systemd/system/pihole-backup-flag.service
+    mode: "0644"
+  become: true
+  notify: reload systemd
+
+- name: Deploy pihole-config-watch.path
+  ansible.builtin.template:
+    src: pihole-config-watch.path.j2
+    dest: /etc/systemd/system/pihole-config-watch.path
+    mode: "0644"
+  become: true
+  notify: reload systemd
+
+- name: Flush handlers (reload systemd before enabling units)
+  ansible.builtin.meta: flush_handlers
+
+- name: Enable and start pihole-backup.timer
+  ansible.builtin.systemd:
+    name: pihole-backup.timer
+    enabled: true
+    state: started
+    daemon_reload: false
+  become: true
+
+- name: Enable and start pihole-config-watch.path
+  ansible.builtin.systemd:
+    name: pihole-config-watch.path
+    enabled: true
+    state: started
+    daemon_reload: false
+  become: true
