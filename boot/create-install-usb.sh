@@ -291,6 +291,17 @@ gather_config() {
     HOSTNAME=${HOSTNAME:-homeassistant}
 
     echo
+    echo -ne "${YELLOW}Environment [prod/dev] (default: prod): ${NC}"
+    read ENV_INPUT
+    ENV_INPUT=${ENV_INPUT:-prod}
+    while [ "$ENV_INPUT" != "prod" ] && [ "$ENV_INPUT" != "dev" ]; do
+        echo -ne "${RED}Kies 'prod' of 'dev': ${NC}"
+        read ENV_INPUT
+        ENV_INPUT=${ENV_INPUT:-prod}
+    done
+    RUNNER_ENV="$ENV_INPUT"
+
+    echo
     echo -e "${YELLOW}SSH Public Key (paste and press Enter, or leave empty):${NC}"
     echo -ne "${YELLOW}SSH Key: ${NC}"
     read SSH_KEY
@@ -586,7 +597,9 @@ generate_setup_script() {
 
     cat > "$output_file" << 'SETUP_SCRIPT_EOF'
 #!/bin/bash
-set -e
+# No set -e — steps run independently so a single failure never silently aborts the rest.
+# Each step reports its own result; failures are loud and the summary makes clear what to fix.
+set -uo pipefail
 
 # Colors
 RED='\033[0;31m'
@@ -605,7 +618,6 @@ if [[ $EUID -ne 0 ]]; then
    exit 1
 fi
 
-# Detect user
 # Detect user (fallback to ubuntu if running via systemd where logname fails)
 ACTUAL_USER="${SUDO_USER:-$(logname 2>/dev/null || true)}"
 [ -z "$ACTUAL_USER" ] && ACTUAL_USER="ubuntu"
@@ -613,67 +625,112 @@ echo -e "${BLUE}User: ${ACTUAL_USER}${NC}"
 echo -e "${BLUE}Hostname: __HOSTNAME__${NC}"
 echo
 
-# 1. Set hostname
-echo -e "${GREEN}[1/7] Setting hostname...${NC}"
-hostnamectl set-hostname __HOSTNAME__
-echo "__HOSTNAME__" > /etc/hostname
-sed -i '/127.0.1.1/d' /etc/hosts
-echo "127.0.1.1    __HOSTNAME__" >> /etc/hosts
-echo -e "   ${GREEN}Done${NC}"
+# Per-step status tracking: OK / SKIP / FAILED
+S1="SKIP"; S2="SKIP"; S3="SKIP"; S4="SKIP"; S5="SKIP"; S6="SKIP"; S7="SKIP"
 
+# fail_step VAR NUM NAME REASON [HINT]
+# Prints a loud failure banner and marks the step as FAILED.
+# The script continues — all remaining steps still run.
+fail_step() {
+    local var="$1" num="$2" name="$3" reason="$4" hint="${5:-}"
+    echo
+    echo -e "${RED}!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!${NC}"
+    echo -e "${RED}!!  STAP ${num} MISLUKT: ${name}${NC}"
+    echo -e "${RED}!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!${NC}"
+    echo -e "${RED}!!  Reden : ${reason}${NC}"
+    if [ -n "$hint" ]; then
+        echo -e "${YELLOW}!!  Wat nu: ${hint}${NC}"
+    fi
+    echo -e "${RED}!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!${NC}"
+    echo
+    printf -v "$var" 'FAILED'
+}
+
+# ============================================================
+# 1. Set hostname
+# ============================================================
+echo -e "${GREEN}[1/7] Setting hostname...${NC}"
+if hostnamectl set-hostname __HOSTNAME__ \
+    && echo "__HOSTNAME__" > /etc/hostname \
+    && sed -i '/127.0.1.1/d' /etc/hosts \
+    && echo "127.0.1.1    __HOSTNAME__" >> /etc/hosts; then
+    echo -e "   ${GREEN}OK${NC}"
+    S1="OK"
+else
+    fail_step S1 "1/7" "Hostname" \
+        "hostnamectl set-hostname __HOSTNAME__ failed" \
+        "Check that systemd-hostnamed is running: systemctl status systemd-hostnamed"
+fi
+
+# ============================================================
 # 2. SSH key
+# ============================================================
 SSH_KEY="__SSH_KEY__"
 if [ -n "$SSH_KEY" ] && [ "$SSH_KEY" != "SKIP" ]; then
     echo -e "${GREEN}[2/7] Adding SSH key...${NC}"
     USER_HOME=$(eval echo ~${ACTUAL_USER})
-    mkdir -p "$USER_HOME/.ssh"
-    if ! grep -q "$SSH_KEY" "$USER_HOME/.ssh/authorized_keys" 2>/dev/null; then
-        echo "$SSH_KEY" >> "$USER_HOME/.ssh/authorized_keys"
+    if mkdir -p "$USER_HOME/.ssh" \
+        && { grep -qF "$SSH_KEY" "$USER_HOME/.ssh/authorized_keys" 2>/dev/null \
+             || echo "$SSH_KEY" >> "$USER_HOME/.ssh/authorized_keys"; } \
+        && chown -R ${ACTUAL_USER}:${ACTUAL_USER} "$USER_HOME/.ssh" \
+        && chmod 700 "$USER_HOME/.ssh" \
+        && chmod 600 "$USER_HOME/.ssh/authorized_keys"; then
+        echo -e "   ${GREEN}OK${NC}"
+        S2="OK"
+    else
+        fail_step S2 "2/7" "SSH key" \
+            "Could not write SSH key to ${USER_HOME}/.ssh/authorized_keys" \
+            "Check that home dir exists: ls -la /home/${ACTUAL_USER}"
     fi
-    chown -R ${ACTUAL_USER}:${ACTUAL_USER} "$USER_HOME/.ssh"
-    chmod 700 "$USER_HOME/.ssh"
-    chmod 600 "$USER_HOME/.ssh/authorized_keys"
-    echo -e "   ${GREEN}Done${NC}"
 else
-    echo -e "${YELLOW}[2/7] SSH key skipped${NC}"
+    echo -e "${YELLOW}[2/7] SSH key: skipped (none provided)${NC}"
+    S2="SKIP"
 fi
 
+# ============================================================
 # 3. Passwordless sudo
+# ============================================================
 echo -e "${GREEN}[3/7] Configuring sudo...${NC}"
-echo "${ACTUAL_USER} ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/${ACTUAL_USER}
-chmod 440 /etc/sudoers.d/${ACTUAL_USER}
-echo -e "   ${GREEN}Done${NC}"
-
-# 4. SSH server
-echo -e "${GREEN}[4/7] Checking SSH server...${NC}"
-if ! systemctl is-active --quiet ssh; then
-    apt-get update -qq
-    apt-get install -y -qq openssh-server
-    systemctl enable ssh
-    systemctl start ssh
+if echo "${ACTUAL_USER} ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/${ACTUAL_USER} \
+    && chmod 440 /etc/sudoers.d/${ACTUAL_USER}; then
+    echo -e "   ${GREEN}OK${NC}"
+    S3="OK"
+else
+    fail_step S3 "3/7" "Sudo" \
+        "Could not write /etc/sudoers.d/${ACTUAL_USER}" \
+        "Check filesystem is not read-only: mount | grep ' / '"
 fi
-echo -e "   ${GREEN}Done${NC}"
 
-# 5. WiFi configuration
+# ============================================================
+# 4. WiFi configuration
+# WiFi runs FIRST so the network is available for step 5 (openssh-server install).
+# nmcli connection add saves the profile without needing an internet connection.
+# ============================================================
 WIFI_SSID="__WIFI_SSID__"
 WIFI_PASSWORD="__WIFI_PASSWORD__"
 if [ -n "$WIFI_SSID" ] && [ "$WIFI_SSID" != "SKIP" ]; then
-    echo -e "${GREEN}[5/7] Configuring WiFi...${NC}"
-    # Use nmcli (NetworkManager) - works on both Desktop and Server
+    echo -e "${GREEN}[4/7] Configuring WiFi (${WIFI_SSID})...${NC}"
+    WIFI_OK=false
     if command -v nmcli &> /dev/null; then
-        # Delete existing connection with same name if exists
-        nmcli connection delete "$WIFI_SSID" 2>/dev/null || true
-        # Create new WiFi connection
-        nmcli device wifi connect "$WIFI_SSID" password "$WIFI_PASSWORD" || {
-            echo -e "${YELLOW}   WiFi connection failed (adapter may not be ready)${NC}"
-            echo -e "${YELLOW}   Creating connection profile for later...${NC}"
-            nmcli connection add type wifi con-name "$WIFI_SSID" ssid "$WIFI_SSID" \
-                wifi-sec.key-mgmt wpa-psk wifi-sec.psk "$WIFI_PASSWORD"
-        }
-        echo -e "   ${GREEN}Done${NC}"
+        # Check if already connected to the right SSID — don't disconnect needlessly
+        ACTIVE_SSID=$(nmcli -t -f active,ssid dev wifi 2>/dev/null | grep '^yes' | cut -d: -f2 || true)
+        if [ "$ACTIVE_SSID" = "$WIFI_SSID" ]; then
+            echo -e "   Already connected to ${WIFI_SSID} — skipping reconnect"
+            WIFI_OK=true
+        elif nmcli device wifi connect "$WIFI_SSID" password "$WIFI_PASSWORD" 2>/dev/null; then
+            WIFI_OK=true
+        else
+            echo -e "${YELLOW}   Direct connect failed — saving profile for next boot...${NC}"
+            nmcli connection delete "$WIFI_SSID" 2>/dev/null || true
+            if nmcli connection add type wifi con-name "$WIFI_SSID" ssid "$WIFI_SSID" \
+                    wifi-sec.key-mgmt wpa-psk wifi-sec.psk "$WIFI_PASSWORD" 2>/dev/null; then
+                echo -e "${YELLOW}   Profile saved — will connect after reboot${NC}"
+                WIFI_OK=true
+            fi
+        fi
     else
-        echo -e "${YELLOW}   NetworkManager not found, creating netplan config...${NC}"
-        cat > /etc/netplan/99-wifi.yaml << WIFIEOF
+        echo -e "${YELLOW}   NetworkManager not found, writing netplan config...${NC}"
+        if cat > /etc/netplan/99-wifi.yaml << WIFIEOF
 network:
   version: 2
   renderer: NetworkManager
@@ -681,18 +738,77 @@ network:
     wlan0:
       dhcp4: true
       access-points:
-        "$WIFI_SSID":
-          password: "$WIFI_PASSWORD"
+        "${WIFI_SSID}":
+          password: "${WIFI_PASSWORD}"
 WIFIEOF
-        chmod 600 /etc/netplan/99-wifi.yaml
-        netplan apply 2>/dev/null || echo -e "${YELLOW}   Netplan apply deferred to next boot${NC}"
-        echo -e "   ${GREEN}Done${NC}"
+        then
+            chmod 600 /etc/netplan/99-wifi.yaml
+            netplan apply 2>/dev/null || echo -e "${YELLOW}   Netplan apply deferred to next boot${NC}"
+            WIFI_OK=true
+        fi
+    fi
+
+    if $WIFI_OK; then
+        echo -e "   ${GREEN}OK${NC}"
+        S4="OK"
+    else
+        fail_step S4 "4/7" "WiFi" \
+            "Could not configure WiFi SSID '${WIFI_SSID}'" \
+            "Check SSID/password, or connect ethernet and re-run. Debug: nmcli device wifi list"
     fi
 else
-    echo -e "${YELLOW}[5/7] WiFi skipped${NC}"
+    echo -e "${YELLOW}[4/7] WiFi: skipped (ethernet only)${NC}"
+    S4="SKIP"
 fi
 
+# ============================================================
+# 5. SSH server
+# Ubuntu Server: openssh-server is pre-installed — just enable/start.
+# Ubuntu Desktop: NOT pre-installed — apt-get install it.
+#   WiFi was configured in step 4, so network should be available now.
+#   If no network yet: wait up to 60s (WiFi adapter may need time to connect).
+# ============================================================
+echo -e "${GREEN}[5/7] Enabling SSH server...${NC}"
+if ! dpkg -l openssh-server 2>/dev/null | grep -q '^ii'; then
+    echo -e "   openssh-server not installed (desktop image) — waiting for network..."
+    NET_WAIT=0
+    while ! ping -c1 -W5 8.8.8.8 > /dev/null 2>&1; do
+        if [ "$NET_WAIT" -ge 60 ]; then
+            fail_step S5 "5/7" "SSH server" \
+                "No network after 60s — cannot install openssh-server" \
+                "Connect ethernet or ensure WiFi is in range, then re-run: sudo /opt/firstboot/setup-machine.sh"
+            break
+        fi
+        sleep 5; NET_WAIT=$((NET_WAIT + 5))
+        echo -e "   Still waiting for network... (${NET_WAIT}s)"
+    done
+    if [ "$S5" != "FAILED" ]; then
+        if apt-get install -y -qq openssh-server 2>/dev/null; then
+            echo -e "   ${GREEN}Installed openssh-server${NC}"
+        else
+            fail_step S5 "5/7" "SSH server" \
+                "apt-get install openssh-server failed" \
+                "Check internet: curl -I https://archive.ubuntu.com"
+        fi
+    fi
+fi
+
+if [ "$S5" != "FAILED" ]; then
+    systemctl enable ssh 2>/dev/null || systemctl enable openssh-server 2>/dev/null || true
+    systemctl start  ssh 2>/dev/null || systemctl start  openssh-server 2>/dev/null || true
+    if systemctl is-active --quiet ssh 2>/dev/null || systemctl is-active --quiet openssh-server 2>/dev/null; then
+        echo -e "   ${GREEN}OK — SSH is running${NC}"
+        S5="OK"
+    else
+        fail_step S5 "5/7" "SSH server" \
+            "SSH service not active after enable+start" \
+            "Check: systemctl status ssh  OR  systemctl status openssh-server"
+    fi
+fi
+
+# ============================================================
 # 6. GitHub Runner
+# ============================================================
 echo -e "${GREEN}[6/7] Installing GitHub Runner...${NC}"
 GH_USER="__GH_USER__"
 GH_REPO="__GH_REPO__"
@@ -700,107 +816,199 @@ GH_PAT="__GH_PAT__"
 GH_REPO_URL="__GH_REPO_URL__"
 
 if [ -n "$GH_PAT" ] && [ "$GH_PAT" != "SKIP" ]; then
-    # Install dependencies
-    apt-get update -qq
-    apt-get install -y -qq curl jq wget
 
-    # Install GitHub CLI
-    curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg -o /usr/share/keyrings/githubcli-archive-keyring.gpg
-    chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg
-    echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" > /etc/apt/sources.list.d/github-cli.list
-    apt-get update -qq
-    apt-get install -y -qq gh
+    # Wait for network
+    echo -e "   Waiting for network (max 120s)..."
+    NETWORK_TIMEOUT=120
+    NETWORK_ELAPSED=0
+    while ! ping -c1 -W5 8.8.8.8 > /dev/null 2>&1; do
+        if [ "$NETWORK_ELAPSED" -ge "$NETWORK_TIMEOUT" ]; then
+            fail_step S6 "6/7" "GitHub Runner" \
+                "No network after ${NETWORK_TIMEOUT}s — WiFi/ethernet not connected" \
+                "Connect to network, then re-run: sudo /opt/firstboot/setup-machine.sh"
+            break
+        fi
+        sleep 5
+        NETWORK_ELAPSED=$((NETWORK_ELAPSED + 5))
+        echo -e "   Still waiting... (${NETWORK_ELAPSED}s)"
+    done
 
-    # Authenticate
-    sudo -u ${ACTUAL_USER} gh auth logout 2>/dev/null || true
-    echo "$GH_PAT" | sudo -u ${ACTUAL_USER} gh auth login --with-token
+    if [ "$S6" != "FAILED" ]; then
+        echo -e "   ${GREEN}Network available${NC}"
+        if ! apt-get update -qq || ! apt-get install -y -qq curl jq wget; then
+            fail_step S6 "6/7" "GitHub Runner" \
+                "apt-get failed installing dependencies (curl jq wget)" \
+                "Check internet: curl -I https://archive.ubuntu.com"
+        fi
+    fi
 
-    # Get runner token
-    RUNNER_TOKEN=$(sudo -u ${ACTUAL_USER} gh api --method POST \
-        -H "Accept: application/vnd.github+json" \
-        /repos/${GH_USER}/${GH_REPO}/actions/runners/registration-token \
-        | jq -r .token)
+    if [ "$S6" != "FAILED" ]; then
+        if ! curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+                -o /usr/share/keyrings/githubcli-archive-keyring.gpg 2>/dev/null; then
+            fail_step S6 "6/7" "GitHub Runner" \
+                "Failed to download GitHub CLI keyring" \
+                "Check internet connectivity"
+        else
+            chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg
+            echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+                > /etc/apt/sources.list.d/github-cli.list
+            if ! apt-get update -qq || ! apt-get install -y -qq gh; then
+                fail_step S6 "6/7" "GitHub Runner" \
+                    "apt-get failed installing gh CLI" \
+                    "Check internet and apt sources"
+            fi
+        fi
+    fi
 
-    if [ -n "$RUNNER_TOKEN" ] && [ "$RUNNER_TOKEN" != "null" ]; then
+    if [ "$S6" != "FAILED" ]; then
+        sudo -u ${ACTUAL_USER} gh auth logout 2>/dev/null || true
+        if ! echo "$GH_PAT" | sudo -u ${ACTUAL_USER} gh auth login --with-token 2>/dev/null; then
+            fail_step S6 "6/7" "GitHub Runner" \
+                "GitHub CLI auth failed — PAT invalid or expired" \
+                "Generate a new PAT at https://github.com/settings/tokens (scopes: repo, workflow, admin:org)"
+        fi
+    fi
+
+    if [ "$S6" != "FAILED" ]; then
+        RUNNER_TOKEN=$(sudo -u ${ACTUAL_USER} gh api --method POST \
+            -H "Accept: application/vnd.github+json" \
+            /repos/${GH_USER}/${GH_REPO}/actions/runners/registration-token \
+            2>/dev/null | jq -r .token 2>/dev/null || echo "")
+        if [ -z "$RUNNER_TOKEN" ] || [ "$RUNNER_TOKEN" = "null" ]; then
+            fail_step S6 "6/7" "GitHub Runner" \
+                "Could not get runner registration token from GitHub API" \
+                "Check PAT permissions: repo + workflow + admin:org (manage_runners)"
+        fi
+    fi
+
+    if [ "$S6" != "FAILED" ]; then
         USER_HOME=$(eval echo ~${ACTUAL_USER})
         RUNNER_DIR="$USER_HOME/actions-runner"
         mkdir -p "$RUNNER_DIR"
         chown -R ${ACTUAL_USER}:${ACTUAL_USER} "$RUNNER_DIR"
         cd "$RUNNER_DIR"
 
-        # Download runner
         RUNNER_VERSION=$(curl -s https://api.github.com/repos/actions/runner/releases/latest | jq -r .tag_name | sed 's/v//')
         RUNNER_ARCH="__RUNNER_ARCH__"
         RUNNER_FILE="actions-runner-linux-${RUNNER_ARCH}-${RUNNER_VERSION}.tar.gz"
 
-        sudo -u ${ACTUAL_USER} wget -q --show-progress \
-            "https://github.com/actions/runner/releases/download/v${RUNNER_VERSION}/${RUNNER_FILE}"
-        sudo -u ${ACTUAL_USER} tar xzf "$RUNNER_FILE"
-        rm "$RUNNER_FILE"
+        if ! sudo -u ${ACTUAL_USER} wget -q --show-progress \
+                "https://github.com/actions/runner/releases/download/v${RUNNER_VERSION}/${RUNNER_FILE}" 2>/dev/null; then
+            fail_step S6 "6/7" "GitHub Runner" \
+                "Failed to download runner binary v${RUNNER_VERSION} (arch: ${RUNNER_ARCH})" \
+                "Check internet: curl -I https://github.com"
+        else
+            sudo -u ${ACTUAL_USER} tar xzf "$RUNNER_FILE"
+            rm "$RUNNER_FILE"
 
-        # Remove existing runner with same name
-        RUNNER_NAME="$(hostname)"
-        EXISTING_IDS=$(sudo -u ${ACTUAL_USER} gh api \
-            /repos/${GH_USER}/${GH_REPO}/actions/runners \
-            --paginate -q '.runners[] | select(.name=="'"${RUNNER_NAME}"'") | .id' || true)
+            RUNNER_NAME="$(hostname)"
+            EXISTING_IDS=$(sudo -u ${ACTUAL_USER} gh api \
+                /repos/${GH_USER}/${GH_REPO}/actions/runners \
+                --paginate -q '.runners[] | select(.name=="'"${RUNNER_NAME}"'") | .id' 2>/dev/null || true)
+            for id in $EXISTING_IDS; do
+                sudo -u ${ACTUAL_USER} gh api --method DELETE \
+                    "/repos/${GH_USER}/${GH_REPO}/actions/runners/${id}" >/dev/null 2>&1 || true
+            done
 
-        for id in $EXISTING_IDS; do
-            sudo -u ${ACTUAL_USER} gh api --method DELETE \
-                "/repos/${GH_USER}/${GH_REPO}/actions/runners/${id}" >/dev/null 2>&1 || true
-        done
-
-        # Configure and start
-        sudo -u ${ACTUAL_USER} ./config.sh \
-            --url "$GH_REPO_URL" \
-            --token "$RUNNER_TOKEN" \
-            --name "${RUNNER_NAME}" \
-            --labels "self-hosted,linux,$(uname -m)" \
-            --unattended
-
-        ./svc.sh install ${ACTUAL_USER}
-        ./svc.sh start
-        echo -e "   ${GREEN}Runner installed${NC}"
-    else
-        echo -e "   ${RED}Failed to get runner token${NC}"
+            if sudo -u ${ACTUAL_USER} ./config.sh \
+                    --url "$GH_REPO_URL" \
+                    --token "$RUNNER_TOKEN" \
+                    --name "${RUNNER_NAME}" \
+                    --labels "self-hosted,linux,$(uname -m),__HOSTNAME__,__ENV__" \
+                    --unattended 2>/dev/null; then
+                ./svc.sh install ${ACTUAL_USER}
+                ./svc.sh start
+                echo -e "   ${GREEN}OK — runner '${RUNNER_NAME}' registered and started${NC}"
+                S6="OK"
+            else
+                fail_step S6 "6/7" "GitHub Runner" \
+                    "config.sh failed — registration token may have expired" \
+                    "Re-run this script: sudo /opt/firstboot/setup-machine.sh"
+            fi
+        fi
     fi
+
 else
-    echo -e "${YELLOW}   Skipped (no PAT)${NC}"
+    echo -e "${YELLOW}[6/7] GitHub Runner: skipped (no PAT)${NC}"
+    S6="SKIP"
 fi
 
-# 7. Cleanup firstboot service and all related files
-echo -e "${GREEN}[7/7] Cleanup...${NC}"
-if [ -f /etc/systemd/system/firstboot-setup.service ]; then
-    systemctl disable firstboot-setup.service 2>/dev/null || true
-    rm -f /etc/systemd/system/firstboot-setup.service
+# ============================================================
+# 7. Disable firstboot service + remove autostart viewer
+# (files only removed if all steps pass — script stays re-runnable on failure)
+# ============================================================
+echo -e "${GREEN}[7/7] Disabling firstboot service...${NC}"
+systemctl disable firstboot-setup.service 2>/dev/null && \
+    rm -f /etc/systemd/system/firstboot-setup.service || true
+# Remove XDG autostart file so the viewer doesn't re-open on next login
+rm -f /etc/xdg/autostart/firstboot-setup.desktop 2>/dev/null || true
+echo -e "   ${GREEN}OK${NC}"
+S7="OK"
+
+# ============================================================
+# Summary
+# ============================================================
+echo
+echo -e "${GREEN}======================================${NC}"
+echo -e "${GREEN}  Setup Summary                      ${NC}"
+echo -e "${GREEN}======================================${NC}"
+
+print_status() {
+    local step="$1" name="$2" status="$3"
+    case "$status" in
+        OK)     echo -e "  ${GREEN}[ OK ]${NC}  ${step}  ${name}" ;;
+        SKIP)   echo -e "  ${YELLOW}[SKIP]${NC}  ${step}  ${name}" ;;
+        FAILED) echo -e "  ${RED}[FAIL]${NC}  ${step}  ${name}  <-- ZIE FOUT HIERBOVEN" ;;
+    esac
+}
+
+print_status "1/7" "Hostname     " "$S1"
+print_status "2/7" "SSH key      " "$S2"
+print_status "3/7" "Sudo         " "$S3"
+print_status "4/7" "WiFi         " "$S4"
+print_status "5/7" "SSH server   " "$S5"
+print_status "6/7" "GitHub Runner" "$S6"
+print_status "7/7" "Cleanup      " "$S7"
+echo -e "${GREEN}======================================${NC}"
+
+# Check for failures
+ANY_FAILED=false
+for s in "$S1" "$S2" "$S3" "$S4" "$S5" "$S6" "$S7"; do
+    [ "$s" = "FAILED" ] && ANY_FAILED=true && break
+done
+
+if $ANY_FAILED; then
+    echo
+    echo -e "${RED}!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!${NC}"
+    echo -e "${RED}!!  EEN OF MEER STAPPEN ZIJN MISLUKT     ${NC}"
+    echo -e "${RED}!!  Script blijft staan — fix en herstart${NC}"
+    echo -e "${RED}!!    sudo /opt/firstboot/setup-machine.sh${NC}"
+    echo -e "${RED}!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!${NC}"
+    echo
+    exit 1
 fi
-# Remove entire firstboot directory (includes setup-machine.sh, run-setup-in-terminal.sh, etc)
-rm -rf /opt/firstboot 2>/dev/null || true
-echo -e "   ${GREEN}Done${NC}"
 
 echo
-echo -e "${GREEN}======================================${NC}"
-echo -e "${GREEN}  Configuration Complete!             ${NC}"
-echo -e "${GREEN}======================================${NC}"
+echo -e "${GREEN}Alle stappen geslaagd!${NC}"
 echo
-echo -e "${YELLOW}Summary:${NC}"
-echo "  Hostname: __HOSTNAME__"
-echo "  SSH: configured"
-echo "  Sudo: passwordless"
-echo "  Runner: installed"
-echo
-echo -e "${YELLOW}Next:${NC}"
+echo -e "${YELLOW}Volgende stappen:${NC}"
 echo "  1. Reboot"
 echo "  2. SSH: ssh ${ACTUAL_USER}@__HOSTNAME__.local"
 echo
 
-# Self-destruct
+# ============================================================
+# Self-destruct (only reached when ALL steps passed)
+# ============================================================
 echo -e "${RED}========================================${NC}"
 echo -e "${RED}  SELF-DESTRUCT SEQUENCE INITIATED     ${NC}"
 echo -e "${RED}========================================${NC}"
 echo
 
+# Remove entire firstboot directory (includes this script and all related files)
+rm -rf /opt/firstboot 2>/dev/null || true
+
 # Try to delete autoinstall.yaml from USB if still mounted
-echo -e "${YELLOW}Searching for autoinstall.yaml...${NC}"
+echo -e "${YELLOW}Searching for autoinstall.yaml on USB...${NC}"
 for mount_point in /cdrom /media/*/* /run/media/*/*; do
     if [ -f "${mount_point}/SETUP/autoinstall.yaml" ]; then
         echo -e "${YELLOW}Found: ${mount_point}/SETUP/autoinstall.yaml${NC}"
@@ -822,12 +1030,9 @@ sleep 1
 echo -e "${RED}1...${NC}"
 sleep 1
 
-# Delete this script
+# Delete this script if somehow still running from outside /opt/firstboot
 SCRIPT_PATH="${BASH_SOURCE[0]}"
-rm -f "$SCRIPT_PATH"
-echo -e "${GREEN}Setup script removed.${NC}"
-
-# Also clean up /opt/setup-machine.sh if different location
+rm -f "$SCRIPT_PATH" 2>/dev/null || true
 rm -f /opt/setup-machine.sh 2>/dev/null || true
 
 echo
@@ -838,6 +1043,7 @@ SETUP_SCRIPT_EOF
 
     # Replace placeholders
     sed -i "s|__HOSTNAME__|$HOSTNAME|g" "$output_file"
+    sed -i "s|__ENV__|$RUNNER_ENV|g" "$output_file"
 
     if [ -z "$SSH_KEY" ]; then
         sed -i "s|__SSH_KEY__|SKIP|" "$output_file"
@@ -942,6 +1148,73 @@ fi
 systemctl disable firstboot-setup.service 2>/dev/null || true
 LAUNCHER_EOF
     chmod +x "$output_file"
+}
+
+generate_firstboot_viewer() {
+    local viewer_file=$1
+    local desktop_file=$2
+
+    # The viewer script: opens in a terminal (via the .desktop file) and streams
+    # the systemd journal for firstboot-setup.service until it completes.
+    cat > "$viewer_file" << 'VIEWER_EOF'
+#!/bin/bash
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m'
+
+clear
+echo -e "${BLUE}========================================${NC}"
+echo -e "${BLUE}  First Boot Setup — Live Progress     ${NC}"
+echo -e "${BLUE}========================================${NC}"
+echo
+echo -e "${BLUE}----------------------------------------${NC}"
+
+# Show all historical output + follow live until service completes
+journalctl -n all -f --output=cat -u firstboot-setup.service &
+JPID=$!
+
+# Wait for service to reach a terminal state (exited or failed)
+# Type=oneshot SubState is "start" while running, "exited" on success, "failed" on error
+while true; do
+    SUBSTATE=$(systemctl show firstboot-setup.service --property=SubState --value 2>/dev/null)
+    [ "$SUBSTATE" = "exited" ] || [ "$SUBSTATE" = "failed" ] && break
+    sleep 2
+done
+
+sleep 2  # Let final journal output flush
+kill $JPID 2>/dev/null
+wait $JPID 2>/dev/null
+
+echo -e "${BLUE}----------------------------------------${NC}"
+echo
+
+if systemctl is-failed firstboot-setup.service &>/dev/null; then
+    echo -e "${RED}Setup FAILED.${NC}"
+    echo -e "${YELLOW}Bekijk de log: journalctl -u firstboot-setup.service${NC}"
+    echo -e "${YELLOW}Herstart: sudo /opt/firstboot/setup-machine.sh${NC}"
+else
+    echo -e "${GREEN}Setup completed successfully.${NC}"
+fi
+
+echo
+echo "Press Enter to close this window..."
+read
+VIEWER_EOF
+    chmod +x "$viewer_file"
+
+    # XDG autostart .desktop file — Terminal=true lets the desktop choose its terminal
+    cat > "$desktop_file" << 'DESKTOP_EOF'
+[Desktop Entry]
+Type=Application
+Name=First Boot Setup
+Comment=First-time machine configuration
+Exec=/opt/firstboot/firstboot-viewer.sh
+Terminal=true
+X-GNOME-Autostart-enabled=true
+NoDisplay=true
+DESKTOP_EOF
 }
 
 generate_flash_to_m2_script() {
@@ -1190,7 +1463,17 @@ chmod +x /mnt/m2root/opt/firstboot/setup-machine.sh
 # Copy systemd service
 cp "${SCRIPT_DIR}/firstboot-setup.service" /mnt/m2root/etc/systemd/system/
 
-# Copy terminal launcher (kept for manual use, but service runs directly now)
+# For desktop: install XDG autostart so a terminal window opens on first login
+# showing live firstboot-setup.service output
+if [ "$IS_DESKTOP" = "yes" ] && [ -f "${SCRIPT_DIR}/firstboot-viewer.sh" ]; then
+    cp "${SCRIPT_DIR}/firstboot-viewer.sh" /mnt/m2root/opt/firstboot/
+    chmod +x /mnt/m2root/opt/firstboot/firstboot-viewer.sh
+    mkdir -p /mnt/m2root/etc/xdg/autostart
+    cp "${SCRIPT_DIR}/firstboot-setup.desktop" /mnt/m2root/etc/xdg/autostart/
+    echo -e "${GREEN}XDG autostart installed — terminal viewer will open on first login${NC}"
+fi
+
+# Also copy run-setup-in-terminal.sh (kept for manual use)
 if [ "$IS_DESKTOP" = "yes" ] && [ -f "${SCRIPT_DIR}/run-setup-in-terminal.sh" ]; then
     cp "${SCRIPT_DIR}/run-setup-in-terminal.sh" /mnt/m2root/opt/firstboot/
     chmod +x /mnt/m2root/opt/firstboot/run-setup-in-terminal.sh
@@ -2012,6 +2295,9 @@ create_pi4_usb() {
 
     if [ "$is_desktop" = "yes" ]; then
         generate_terminal_launcher /mnt/rootfs/opt/pi4-flash/run-setup-in-terminal.sh
+        generate_firstboot_viewer \
+            /mnt/rootfs/opt/pi4-flash/firstboot-viewer.sh \
+            /mnt/rootfs/opt/pi4-flash/firstboot-setup.desktop
     fi
 
     # Create a convenient symlink and desktop shortcut
@@ -2060,6 +2346,7 @@ echo "========================================"
 echo "  Pi4 Flash USB - Ready to flash M.2"
 echo "========================================"
 echo ""
+echo "  Connect: USB Bridge, wait 4 usb msg's"
 echo "  Run: sudo flash-to-m2"
 echo ""
 echo "========================================"
@@ -2349,6 +2636,177 @@ update_usb() {
     echo -e "${BLUE}No re-flash needed. USB is ready to use.${NC}"
 }
 
+patch_usb() {
+    echo -e "${GREEN}========================================${NC}"
+    echo -e "${GREEN}  USB Patch Mode                       ${NC}"
+    echo -e "${GREEN}========================================${NC}"
+    echo -e "${BLUE}Regenerate setup-machine.sh on existing USB${NC}"
+    echo -e "${BLUE}Same credentials, updated script logic — no re-flash!${NC}"
+    echo
+
+    echo -e "${GREEN}Step 1: Select USB Device${NC}"
+    echo
+    select_usb_device
+
+    echo
+    echo -e "${GREEN}Step 2: Detecting USB type and mounting...${NC}"
+
+    local setup_script=""
+    local usb_type=""
+    local mount_point=""
+
+    # Try x86 Ventoy first (partition 1, exFAT)
+    local data_part=""
+    if [ -b "/dev/${USB_DEVICE}1" ]; then
+        data_part="/dev/${USB_DEVICE}1"
+    elif [ -b "/dev/${USB_DEVICE}p1" ]; then
+        data_part="/dev/${USB_DEVICE}p1"
+    fi
+
+    if [ -n "$data_part" ]; then
+        local fs_type
+        fs_type=$(blkid -s TYPE -o value "$data_part" 2>/dev/null)
+        if [ "$fs_type" = "exfat" ] || [ "$fs_type" = "vfat" ]; then
+            mkdir -p /mnt/ventoy
+            umount "$data_part" 2>/dev/null || true
+            modprobe exfat 2>/dev/null || true
+            sleep 1
+            if mount -t exfat -o rw "$data_part" /mnt/ventoy 2>/dev/null \
+               || mount -o rw "$data_part" /mnt/ventoy 2>/dev/null; then
+                if [ -f "/mnt/ventoy/SETUP/setup-machine.sh" ]; then
+                    setup_script="/mnt/ventoy/SETUP/setup-machine.sh"
+                    usb_type="x86"
+                    mount_point="/mnt/ventoy"
+                    echo -e "${GREEN}Detected: x86 Ventoy USB${NC}"
+                else
+                    umount /mnt/ventoy 2>/dev/null || true
+                fi
+            fi
+        fi
+    fi
+
+    # Try Pi4 (partition 2, ext4 rootfs)
+    if [ -z "$usb_type" ]; then
+        local rootfs_part=""
+        if [ -b "/dev/${USB_DEVICE}2" ]; then
+            rootfs_part="/dev/${USB_DEVICE}2"
+        elif [ -b "/dev/${USB_DEVICE}p2" ]; then
+            rootfs_part="/dev/${USB_DEVICE}p2"
+        fi
+
+        if [ -n "$rootfs_part" ]; then
+            local fs_type
+            fs_type=$(blkid -s TYPE -o value "$rootfs_part" 2>/dev/null)
+            if [ "$fs_type" = "ext4" ]; then
+                mkdir -p /mnt/rootfs
+                umount "$rootfs_part" 2>/dev/null || true
+                umount /mnt/rootfs   2>/dev/null || true
+                if mount -o rw "$rootfs_part" /mnt/rootfs 2>/dev/null; then
+                    if [ -f "/mnt/rootfs/opt/pi4-flash/setup-machine.sh" ]; then
+                        setup_script="/mnt/rootfs/opt/pi4-flash/setup-machine.sh"
+                        usb_type="pi4"
+                        mount_point="/mnt/rootfs"
+                        echo -e "${GREEN}Detected: Pi4 USB${NC}"
+                    else
+                        umount /mnt/rootfs 2>/dev/null || true
+                    fi
+                fi
+            fi
+        fi
+    fi
+
+    if [ -z "$usb_type" ]; then
+        echo -e "${RED}ERROR: Could not find setup-machine.sh on USB.${NC}"
+        exit 1
+    fi
+
+    echo
+    echo -e "${GREEN}Step 3: Extracting embedded values from existing script...${NC}"
+
+    # Extract all substituted values from the on-USB script
+    # Extract the word immediately after 'set-hostname', ignoring trailing ' \' continuation
+    HOSTNAME=$(grep 'hostnamectl set-hostname' "$setup_script" 2>/dev/null | head -1 \
+        | sed 's/.*set-hostname[[:space:]]*//;s/[[:space:]].*//')
+    SSH_KEY=$(grep '^SSH_KEY=' "$setup_script" 2>/dev/null | head -1 | sed 's/^SSH_KEY="//;s/"$//')
+    GH_USER=$(grep '^GH_USER=' "$setup_script" 2>/dev/null | head -1 | sed 's/^GH_USER="//;s/"$//')
+    GH_REPO=$(grep '^GH_REPO=' "$setup_script" 2>/dev/null | head -1 | sed 's/^GH_REPO="//;s/"$//')
+    GH_REPO_URL=$(grep '^GH_REPO_URL=' "$setup_script" 2>/dev/null | head -1 | sed 's/^GH_REPO_URL="//;s/"$//')
+    WIFI_SSID=$(grep '^WIFI_SSID=' "$setup_script" 2>/dev/null | head -1 | sed 's/^WIFI_SSID="//;s/"$//')
+    WIFI_PASSWORD=$(grep '^WIFI_PASSWORD=' "$setup_script" 2>/dev/null | head -1 | sed 's/^WIFI_PASSWORD="//;s/"$//')
+    GH_PAT=$(grep '^GH_PAT=' "$setup_script" 2>/dev/null | head -1 | sed 's/^GH_PAT="//;s/"$//')
+    local runner_arch
+    runner_arch=$(grep '^RUNNER_ARCH=' "$setup_script" 2>/dev/null | head -1 | sed 's/^RUNNER_ARCH="//;s/"$//')
+
+    # Normalise SKIP sentinels back to empty strings
+    [ "$WIFI_SSID" = "SKIP" ]  && WIFI_SSID=""
+    [ "$SSH_KEY"   = "SKIP" ]  && SSH_KEY=""
+    [ "$GH_PAT"    = "SKIP" ]  && GH_PAT=""
+
+    local arch="x86_64"
+    [ "$runner_arch" = "arm64" ] && arch="arm64"
+
+    echo "  Hostname : $HOSTNAME"
+    echo "  GH user  : $GH_USER"
+    echo "  GH repo  : $GH_REPO"
+    echo "  WiFi     : ${WIFI_SSID:-none}"
+    echo "  Arch     : $arch"
+    echo "  SSH key  : ${SSH_KEY:0:40}..."
+    echo "  PAT      : ${GH_PAT:0:6}... (truncated)"
+    echo
+
+    # Detect corrupted extraction (placeholders not replaced = previous patch failed mid-way)
+    local corrupt=false
+    [[ "$HOSTNAME" == __*__ ]] && corrupt=true
+    [[ "$GH_USER"  == __*__ ]] && corrupt=true
+    [[ "$SSH_KEY"  == __*__ ]] && corrupt=true
+    [[ "$GH_PAT"   == __*__ ]] && corrupt=true
+
+    if [ -z "$HOSTNAME" ]; then
+        echo -e "${RED}ERROR: Could not extract hostname from script — is this the right USB?${NC}"
+        umount "$mount_point" 2>/dev/null || true
+        exit 1
+    fi
+
+    if $corrupt; then
+        echo -e "${RED}!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!${NC}"
+        echo -e "${RED}!!  --patch kan hier NIET mee verder      ${NC}"
+        echo -e "${RED}!!  setup-machine.sh bevat placeholders   ${NC}"
+        echo -e "${RED}!!  (vorige patch liep fout mid-way)      ${NC}"
+        echo -e "${RED}!!                                        ${NC}"
+        echo -e "${RED}!!  Oplossing: volledige USB recreatie    ${NC}"
+        echo -e "${RED}!!    sudo ./create-install-usb.sh        ${NC}"
+        echo -e "${RED}!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!${NC}"
+        umount "$mount_point" 2>/dev/null || true
+        exit 1
+    fi
+
+    echo -e "${GREEN}Step 4: Regenerating setup-machine.sh...${NC}"
+
+    # Backup old script
+    cp "$setup_script" "${setup_script}.bak"
+    echo -e "  Backup saved: ${setup_script}.bak"
+
+    # Regenerate using the same generate_setup_script function
+    generate_setup_script "$setup_script" "$arch"
+    echo -e "  ${GREEN}Done — new script written${NC}"
+
+    echo
+    echo -e "${GREEN}Step 5: Syncing and unmounting...${NC}"
+    sync
+    umount "$mount_point" 2>/dev/null || true
+    echo -e "  ${GREEN}Done${NC}"
+
+    echo
+    echo -e "${GREEN}========================================${NC}"
+    echo -e "${GREEN}  Patch complete!                      ${NC}"
+    echo -e "${GREEN}========================================${NC}"
+    echo "  USB type : $usb_type"
+    echo "  Hostname : $HOSTNAME"
+    echo "  Script   : $setup_script (on USB)"
+    echo
+    echo -e "${BLUE}USB is ready. No re-flash needed.${NC}"
+}
+
 #==============================================================================
 # MAIN
 #==============================================================================
@@ -2378,26 +2836,37 @@ for arg in "$@"; do
         --update|-u)
             MODE="update"
             ;;
+        --patch|-p)
+            MODE="patch"
+            ;;
         --help|-h)
             echo "Usage: sudo $0 [OPTIONS]"
             echo ""
             echo "Options:"
             echo "  (none)          Create a new bootable install USB (full flash)"
             echo "  --update, -u    Update hostname/runner labels on existing USB (no re-flash)"
+            echo "  --patch,  -p    Regenerate setup-machine.sh on existing USB (same credentials, updated script)"
             echo "  --help,   -h    Show this help"
             echo ""
             echo "Examples:"
             echo "  sudo $0                  # Create new USB"
-            echo "  sudo $0 --update         # Update existing USB"
+            echo "  sudo $0 --update         # Update hostname/labels on existing USB"
+            echo "  sudo $0 --patch          # Patch script logic on existing USB (keep credentials)"
             exit 0
             ;;
     esac
 done
 
-# Dispatch to update mode if requested
+# Dispatch to update/patch mode if requested
 if [ "$MODE" = "update" ]; then
     check_dependencies
     update_usb
+    exit 0
+fi
+
+if [ "$MODE" = "patch" ]; then
+    check_dependencies
+    patch_usb
     exit 0
 fi
 

@@ -3,6 +3,14 @@ name: Deploy Home Assistant
 on:
   workflow_dispatch:
     inputs:
+      environment:
+        description: 'Target environment'
+        required: false
+        default: 'prod'
+        type: choice
+        options:
+          - prod
+          - dev
       maintenance_mode:
         description: 'Maintenance mode (skip backup restore, config from Git only)'
         required: false
@@ -17,7 +25,7 @@ on:
 
 jobs:
   deploy-homeassistant:
-    runs-on: [self-hosted]
+    runs-on: ${{ fromJSON(format('["self-hosted","homeassistant","{0}"]', inputs.environment || 'prod')) }}
 
     steps:
       - name: Setup homelab directory structure
