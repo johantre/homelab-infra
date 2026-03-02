@@ -41,25 +41,25 @@
 
     - name: Create temporary restore directory
       ansible.builtin.file:
-        path: /tmp/ha-backup-restore
+        path: {{ ha_native_backup_dir }}/restore-tmp
         state: directory
         mode: '0700'
 
     - name: Copy hassio-tar.sh to target
       ansible.builtin.copy:
         src: hassio-tar.sh
-        dest: /tmp/ha-backup-restore/hassio-tar.sh
+        dest: {{ ha_native_backup_dir }}/restore-tmp/hassio-tar.sh
         mode: '0755'
 
     - name: Extract outer tar from backup
       ansible.builtin.unarchive:
         src: "{{ latest_backup.path }}"
-        dest: /tmp/ha-backup-restore/
+        dest: {{ ha_native_backup_dir }}/restore-tmp/
         remote_src: yes
 
     - name: Check if homeassistant.tar.gz exists
       ansible.builtin.stat:
-        path: /tmp/ha-backup-restore/homeassistant.tar.gz
+        path: {{ ha_native_backup_dir }}/restore-tmp/homeassistant.tar.gz
       register: ha_tar_gz_stat
 
     - name: Fail if homeassistant.tar.gz missing
@@ -69,7 +69,7 @@
 
     - block:
       - name: Decrypt with bash -c
-        ansible.builtin.shell: bash -c 'cd /tmp/ha-backup-restore && export HASSIO_PASSWORD="{{ ha_backup_encrypt_key }}" && /tmp/ha-backup-restore/hassio-tar.sh < homeassistant.tar.gz | tar -x'
+        ansible.builtin.shell: bash -c 'cd {{ ha_native_backup_dir }}/restore-tmp && export HASSIO_PASSWORD="{{ ha_backup_encrypt_key }}" && {{ ha_native_backup_dir }}/restore-tmp/hassio-tar.sh < homeassistant.tar.gz | tar -x'
 
       rescue:
         - name: Show helpful decrypt error
@@ -87,7 +87,7 @@
 
     - name: Check for data directory
       ansible.builtin.stat:
-        path: /tmp/ha-backup-restore/data
+        path: {{ ha_native_backup_dir }}/restore-tmp/data
       register: data_dir_stat
 
     - name: Fail if data directory missing
@@ -97,7 +97,7 @@
 
     - name: Verify data directory is not empty
       ansible.builtin.shell: |
-        SIZE=$(du -sb /tmp/ha-backup-restore/data | cut -f1)
+        SIZE=$(du -sb {{ ha_native_backup_dir }}/restore-tmp/data | cut -f1)
         if [ "$SIZE" -lt 100000 ]; then
           echo "ERROR: Restored data is too small ($SIZE bytes)"
           exit 1
@@ -119,9 +119,9 @@
     - name: Create safety backup of current config
       ansible.builtin.shell: |
         TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-        sudo tar -czf "/tmp/ha-config-backup-${TIMESTAMP}.tar.gz" \
+        sudo tar -czf "{{ ha_native_backup_dir }}/config-backup-${TIMESTAMP}.tar.gz" \
           -C "{{ ha_config_dir }}" .
-        echo "Safety backup: /tmp/ha-config-backup-${TIMESTAMP}.tar.gz"
+        echo "Safety backup: {{ ha_native_backup_dir }}/config-backup-${TIMESTAMP}.tar.gz"
       register: safety_backup
       changed_when: true
 
@@ -143,8 +143,8 @@
     # because Git is the source of truth for config-as-code
     - name: Restore .storage from backup
       ansible.builtin.shell: |
-        if [ -d /tmp/ha-backup-restore/data/.storage ]; then
-          cp -r /tmp/ha-backup-restore/data/.storage "{{ ha_config_dir }}/"
+        if [ -d {{ ha_native_backup_dir }}/restore-tmp/data/.storage ]; then
+          cp -r {{ ha_native_backup_dir }}/restore-tmp/data/.storage "{{ ha_config_dir }}/"
           echo "✅ .storage/ restored"
         else
           echo "⚠️ No .storage/ in backup"
@@ -158,7 +158,7 @@
 
     - name: Restore database files from backup
       ansible.builtin.shell: |
-        cd /tmp/ha-backup-restore/data
+        cd {{ ha_native_backup_dir }}/restore-tmp/data
         RESTORED=0
         for dbfile in *.db *.db-shm *.db-wal; do
           if [ -f "$dbfile" ]; then
@@ -216,6 +216,6 @@
   always:
     - name: Remove temporary restore directory (GUARANTEED cleanup)
       ansible.builtin.file:
-        path: /tmp/ha-backup-restore
+        path: {{ ha_native_backup_dir }}/restore-tmp
         state: absent
       failed_when: false
