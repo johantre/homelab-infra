@@ -804,6 +804,8 @@ if [ "$S5" != "FAILED" ]; then
             "SSH service not active after enable+start" \
             "Check: systemctl status ssh  OR  systemctl status openssh-server"
     fi
+    # Ensure avahi-utils is installed for .local mDNS hostname resolution
+    apt-get install -y -qq avahi-utils 2>/dev/null || true
 fi
 
 # ============================================================
