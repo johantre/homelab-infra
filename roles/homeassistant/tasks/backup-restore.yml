@@ -41,25 +41,25 @@
 
     - name: Create temporary restore directory
       ansible.builtin.file:
-        path: {{ ha_native_backup_dir }}/restore-tmp
+        path: "{{ ha_native_backup_dir }}/restore-tmp"
         state: directory
         mode: '0700'
 
     - name: Copy hassio-tar.sh to target
       ansible.builtin.copy:
         src: hassio-tar.sh
-        dest: {{ ha_native_backup_dir }}/restore-tmp/hassio-tar.sh
+        dest: "{{ ha_native_backup_dir }}/restore-tmp/hassio-tar.sh"
         mode: '0755'
 
     - name: Extract outer tar from backup
       ansible.builtin.unarchive:
         src: "{{ latest_backup.path }}"
-        dest: {{ ha_native_backup_dir }}/restore-tmp/
+        dest: "{{ ha_native_backup_dir }}/restore-tmp/"
         remote_src: yes
 
     - name: Check if homeassistant.tar.gz exists
       ansible.builtin.stat:
-        path: {{ ha_native_backup_dir }}/restore-tmp/homeassistant.tar.gz
+        path: "{{ ha_native_backup_dir }}/restore-tmp/homeassistant.tar.gz"
       register: ha_tar_gz_stat
 
     - name: Fail if homeassistant.tar.gz missing
@@ -76,10 +76,10 @@
           ansible.builtin.fail:
             msg: |
               ❌ BACKUP DECRYPT FAILED!
-              
+
               Most common cause: Wrong encryption key
               Other causes: Corrupt backup file, disk space issue
-              
+
               Check:
               - Is HA_BACKUP_ENCRYPT_KEY correct?
               - ⚠️ Was backup created with THIS key?
@@ -87,7 +87,7 @@
 
     - name: Check for data directory
       ansible.builtin.stat:
-        path: {{ ha_native_backup_dir }}/restore-tmp/data
+        path: "{{ ha_native_backup_dir }}/restore-tmp/data"
       register: data_dir_stat
 
     - name: Fail if data directory missing
@@ -216,6 +216,6 @@
   always:
     - name: Remove temporary restore directory (GUARANTEED cleanup)
       ansible.builtin.file:
-        path: {{ ha_native_backup_dir }}/restore-tmp
+        path: "{{ ha_native_backup_dir }}/restore-tmp"
         state: absent
       failed_when: false
