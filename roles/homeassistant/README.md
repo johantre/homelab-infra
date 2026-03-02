@@ -44,7 +44,8 @@ ansible-playbook site.yml -i inventories/ha_target_local.ini -l ha_target -e mai
 | `GH_USERNAME` | GitHub username for repo access |
 | `GH_PAT` | GitHub Personal Access Token |
 | `CF_TUNNEL_TOKEN` | Cloudflare tunnel token (when cloudflared enabled) |
-| `HA_BACKUP_ENCRYPT_KEY` | Encryption key for backup restore |
+| `HA_BACKUP_ENCRYPT_KEY` | Encryption key for HA backups (injected into `.storage/backup` after every deploy) |
+| `HA_LONG_LIVED_TOKEN_GH_ACTIONS_GIT_SYNC` | Long-lived token for GitHub Actions API access (injected into `.storage/auth` after every deploy) |
 | `HA_USER_USERNAME` | Bootstrap user (fresh install only) |
 | `HA_USER_PASSWORD` | Bootstrap password (fresh install only) |
 
@@ -190,6 +191,7 @@ export GH_USERNAME="your-username"
 export GH_PAT="ghp_..."
 export CF_TUNNEL_TOKEN="..."
 export HA_BACKUP_ENCRYPT_KEY="..."
+export HA_LONG_LIVED_TOKEN_GH_ACTIONS_GIT_SYNC="..."
 export HA_USER_USERNAME="admin"
 export HA_USER_PASSWORD="..."
 

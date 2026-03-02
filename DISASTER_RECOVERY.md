@@ -33,75 +33,52 @@ Make sure you have the following:
 - [ ] ✅ Network access to seedbox (optional)
 - [ ] ✅ Local backup encrypted files (optional, in `/mnt/backup/homeassistant/`)
 
-## 🔐 Backup Encryption Key Management
+## 🔐 Secrets → HA: Backup Key & Long-Lived Token
 
-### How the Backup Key Works
+GitHub Secrets is the **single source of truth** for two critical values. After every deploy they are pushed into HA — regardless of deploy mode.
 
-The backup encryption key is stored in **two places**:
-1. **GitHub Secrets** (`HA_BACKUP_ENCRYPT_KEY`) - used by DR playbook to decrypt backups
-2. **Inside HA's .storage** - restored along with the backup!
+### What gets synchronized
 
-### Key Behavior During Deploy vs Restore
+| Secret | Purpose | Location in HA |
+|--------|---------|---------------|
+| `HA_BACKUP_ENCRYPT_KEY` | Encryption key for future backups | `.storage/backup` |
+| `HA_LONG_LIVED_TOKEN_GH_ACTIONS_GIT_SYNC` | GitHub Actions API access | `.storage/auth` |
 
-| Action | Effect on Encryption Key |
-|--------|-------------------------|
-| **Fresh deploy** (no backup restore) | NEW random key generated |
-| **Backup restore** | Key FROM the backup is restored to HA |
+### Behavior per deploy mode
 
-**This is the key insight:** When you restore from a backup, the encryption key stored inside that backup becomes HA's active key. New backups will then be encrypted with that same key.
+| Mode | Backup key | Long-lived token |
+|------|-----------|-----------------|
+| **Maintenance** | Always set from secrets | Always injected from secrets |
+| **DR restore** | Always set from secrets | Always injected from secrets |
+| **Fresh install** | Always set from secrets | Injected (credentials created via bootstrap) |
 
-### Backup Key Lifecycle: How Key Recycling Works
+> **Fresh install note:** If no credentials are found in `.storage/auth` (e.g. HA was not bootstrapped), token injection is skipped with a warning. This is not an error.
+
+### Backup Key Lifecycle
 
 ```mermaid
-flowchart TB
-    subgraph OLD["Old HA (before disaster)"]
-        A["HA running with key 'ABC123'"]
-        A --> B["Backup created<br/>📦 contains key 'ABC123'"]
-    end
-
-    subgraph DISASTER["💥 Disaster Strikes"]
-        C["Hardware fails"]
-    end
-
-    subgraph NEW["New HA (after disaster)"]
-        D["Fresh deploy<br/>⚠️ generates NEW random key 'XYZ789'"]
-        D --> E["DR Restore runs"]
-        E --> F["Backup decrypted with 'ABC123'<br/>(from GitHub Secrets)"]
-        F --> G["✅ HA now has key 'ABC123' again!<br/>(restored from backup)"]
-        G --> H["New backups use 'ABC123'"]
-    end
-
-    B --> C
-    C --> D
-    H -.-> |"Key recycled for next DR"| B
-
-    style A fill:#4caf50
-    style D fill:#ff9800
-    style G fill:#4caf50
-    style H fill:#2196f3
+flowchart LR
+    S[("GitHub Secrets\nHA_BACKUP_ENCRYPT_KEY")]
+    S -->|"After every deploy\n(all modes)"| B[".storage/backup\n(password field)"]
+    B --> BK["Future backups\nencrypted with this key"]
+    BK -->|"DR restore"| D["Backup decrypted\nwith key from Secrets"]
+    D --> B
 ```
 
-**The magic:** Even though a fresh deploy generates a new random key, the backup restore overwrites it with the key from the backup. This means your `HA_BACKUP_ENCRYPT_KEY` in GitHub Secrets stays valid forever, as long as you always restore from a backup that contains that key.
+**The principle:** Secrets → HA, always. Never the reverse.
 
-### One-Time Setup: Lock In Your Fixed Key
+### Troubleshooting "bad decrypt" Error
 
-To ensure your key gets recycled through every DR:
+This means the key in Secrets does not match the key used to create the backup.
 
-| Step | Action | Why |
-|------|--------|-----|
-| 1 | Get current key from HA:<br/>`Settings → System → Backups → (i) → Encryption key` | This is the key inside your backups |
-| 2 | Store in GitHub Secrets:<br/>`HA_BACKUP_ENCRYPT_KEY = <that key>` | DR playbook uses this to decrypt |
-| 3 | Create a fresh backup:<br/>`Settings → System → Backups → Create backup` | Ensures latest backup has the key |
-| 4 | Delete old backups with different keys:<br/>`sudo rm /mnt/backup/homeassistant/*.tar` | Prevents "Unknown format" errors |
+Causes:
+- Backup created before this system was introduced (HA used a different random key then)
+- Secret manually changed after the backup was created
 
-**After this setup:** Every future DR will restore this key, and new backups will contain it. The cycle continues indefinitely.
-
-### Troubleshooting "Unknown format" Error
-
-This error means key mismatch between Secrets and backup. Solutions:
-1. **Seedbox restore** - if seedbox is online, .storage is synced directly (no decryption needed)
-2. **Get key from running HA** - Settings → System → Backups → (i) → Encryption key → update Secrets
-3. **Bootstrap** - fresh install without backup restore (`-e ha_bootstrap_enable=true`)
+Solutions:
+1. **Seedbox restore** — if the seedbox is online, `.storage` is synced directly (no decryption needed)
+2. **Bootstrap** — fresh install without backup restore: trigger workflow with `maintenance_mode=false` and no backup present
+3. **Use correct backup** — remove backups made before the current key was in use
 
 ### Phase 1: USB Preparation (10 minutes)
 
@@ -521,6 +498,7 @@ CF_TUNNEL_TOKEN=xxx
 HA_USER_USERNAME=xxx
 HA_USER_PASSWORD=xxx
 HA_BACKUP_ENCRYPT_KEY=xxx
+HA_LONG_LIVED_TOKEN_GH_ACTIONS_GIT_SYNC=xxx
 SSH_PRIV_KEY_B64=xxx
 ```
 
