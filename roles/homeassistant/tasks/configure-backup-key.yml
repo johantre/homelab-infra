@@ -1,10 +1,7 @@
 ---
-# Configure HA backup encryption key to match HA_BACKUP_ENCRYPT_KEY secret.
-# Runs after maintenance deploy or fresh install — NOT after DR restore
-# (backup.manager is already restored from backup in that case).
-#
-# Uses HA REST API with short-lived token from username/password auth.
-# Script runs INSIDE the container where localhost:port is accessible.
+# Set HA backup encryption key to match HA_BACKUP_ENCRYPT_KEY secret.
+# Writes directly to .storage/backup — run while HA is stopped.
+# Direction: secrets → HA (always, all deploy modes)
 
 - name: Copy backup key configuration script to target
   ansible.builtin.copy:
@@ -12,18 +9,16 @@
     dest: /tmp/configure_backup_key.py
     mode: "0644"
 
-- name: Copy script into HA container
+- name: Stop HA container for backup key configuration
   ansible.builtin.shell: |
-    sg docker -c 'docker cp /tmp/configure_backup_key.py {{ ha_container_name }}:/tmp/configure_backup_key.py'
-  changed_when: false
+    sg docker -c 'docker stop {{ ha_container_name }}'
+  changed_when: true
 
-- name: Configure backup encryption key via HA API
+- name: Set backup encryption key in .storage/backup
   ansible.builtin.shell: |
-    sg docker -c 'docker exec {{ ha_container_name }} python3 /tmp/configure_backup_key.py \
-      {{ ha_host_port }} \
-      {{ ha_user_username | quote }} \
-      {{ ha_user_password | quote }} \
-      {{ ha_backup_encrypt_key | quote }}'
+    python3 /tmp/configure_backup_key.py \
+      {{ ha_config_dir | quote }} \
+      {{ ha_backup_encrypt_key | quote }}
   register: backup_key_result
   no_log: true
   changed_when: true
@@ -32,9 +27,13 @@
   ansible.builtin.debug:
     msg: "{{ backup_key_result.stdout }}"
 
-- name: Clean up script from container and target
+- name: Start HA container after backup key configuration
   ansible.builtin.shell: |
-    sg docker -c 'docker exec {{ ha_container_name }} rm -f /tmp/configure_backup_key.py' || true
-    rm -f /tmp/configure_backup_key.py
-  changed_when: false
+    sg docker -c 'docker start {{ ha_container_name }}'
+  changed_when: true
+
+- name: Clean up script
+  ansible.builtin.file:
+    path: /tmp/configure_backup_key.py
+    state: absent
   failed_when: false
