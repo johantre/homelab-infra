@@ -184,8 +184,7 @@ jobs:
 
           ansible-playbook \
             -i inventories/pihole_target_local.ini \
-            site.yml \
-            -l pihole_target \
+            deploy-pihole.yml \
             -e maintenance_mode=${{ github.event.inputs.maintenance_mode || 'true' }} \
             -vv \
             2>&1 | tee ansible-deploy-pihole.log

@@ -1,0 +1,6 @@
+- hosts: ha:ha_target
+  gather_facts: true
+  vars:
+    ansible_python_interpreter: /usr/bin/python3
+  roles:
+    - homeassistant
