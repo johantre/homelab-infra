@@ -206,6 +206,7 @@ jobs:
           HA_USER_USERNAME: ${{ secrets.HA_USER_USERNAME }}
           HA_USER_PASSWORD: ${{ secrets.HA_USER_PASSWORD }}
           HA_BACKUP_ENCRYPT_KEY: ${{ secrets.HA_BACKUP_ENCRYPT_KEY }}
+          HA_LONG_LIVED_TOKEN_GH_ACTIONS_GIT_SYNC: ${{ secrets.HA_LONG_LIVED_TOKEN_GH_ACTIONS_GIT_SYNC }}
         run: |
           echo "🚀 Starting Home Assistant deployment..."
           

@@ -1,5 +1,6 @@
 gh_pat: "{{ lookup('env','GH_PAT') }}"
 gh_username: "{{ lookup('env','GH_USERNAME') }}"
+gh_infra_repo: "{{ lookup('env','GH_USERNAME') }}/homelab-infra"
 
 runtime_uid: "{{ ansible_user_uid }}"
 runtime_gid: "{{ ansible_user_gid }}"
@@ -27,6 +28,7 @@ ha_bootstrap_enable: true
 ha_container_name: homeassistant_ansible
 ha_seedbox_network: "192.168.3.0/24"
 ha_backup_encrypt_key: "{{ lookup('env', 'HA_BACKUP_ENCRYPT_KEY') }}"
+ha_long_lived_token: "{{ lookup('env', 'HA_LONG_LIVED_TOKEN_GH_ACTIONS_GIT_SYNC') }}"
 ha_network_mode: bridge
 ha_host_port: 8123
 

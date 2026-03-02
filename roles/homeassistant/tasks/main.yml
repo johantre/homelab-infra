@@ -386,3 +386,19 @@
          if (maintenance_mode | default(false) | bool)
          else ('✅ DR restore completed successfully' if restore_completed | default(false) else '🆕 Fresh install - bootstrap ran') }}
   when: "'ha_target' in group_names"
+
+# ============================================================================
+# POST-DEPLOY: Force secrets → HA (altijd, alle deploy modes)
+#   - Backup key: REST API call terwijl HA draait → idempotent, geen restart
+#   - Long-lived token: stop/inject in .storage/auth/start → idempotent
+#     Als geen credentials gevonden (bijv. maintenance zonder bootstrap) → warning, geen fout
+# ============================================================================
+
+- name: Configure backup encryption key in HA
+  ansible.builtin.include_tasks: configure-backup-key.yml
+  when: "'ha_target' in group_names"
+
+- name: Inject long-lived token from secrets into HA
+  ansible.builtin.include_tasks: configure-long-lived-token.yml
+  when: "'ha_target' in group_names"
+

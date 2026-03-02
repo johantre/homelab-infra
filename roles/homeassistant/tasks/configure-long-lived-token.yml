@@ -1,0 +1,46 @@
+---
+# Inject the known long-lived token from secrets into HA's auth storage.
+# Direction: secrets → HA (HA_LONG_LIVED_TOKEN_GH_ACTIONS_GIT_SYNC → .storage/auth)
+#
+# Only runs after fresh install (bootstrap path):
+#   - Maintenance mode: .storage/auth preserved → token still valid → skip
+#   - DR restore: .storage/auth restored from backup → token valid → skip
+#   - Fresh install: new user, no long-lived tokens → inject from secrets
+#
+# Requires HA to be stopped while modifying .storage/auth.
+
+- name: Copy token injection script to target
+  ansible.builtin.copy:
+    src: inject_ha_token.py
+    dest: /tmp/inject_ha_token.py
+    mode: "0644"
+
+- name: Stop HA container for token injection
+  ansible.builtin.shell: |
+    sg docker -c 'docker stop {{ ha_container_name }}'
+  changed_when: true
+
+- name: Inject long-lived token from secrets into .storage/auth
+  ansible.builtin.shell: |
+    python3 /tmp/inject_ha_token.py \
+      {{ ha_config_dir | quote }} \
+      {{ ha_user_username | quote }} \
+      {{ ha_long_lived_token | quote }}
+  register: token_inject_result
+  no_log: true
+  changed_when: true
+
+- name: Show token injection result
+  ansible.builtin.debug:
+    msg: "{{ token_inject_result.stdout }}"
+
+- name: Start HA container after token injection
+  ansible.builtin.shell: |
+    sg docker -c 'docker start {{ ha_container_name }}'
+  changed_when: true
+
+- name: Clean up injection script
+  ansible.builtin.file:
+    path: /tmp/inject_ha_token.py
+    state: absent
+  failed_when: false

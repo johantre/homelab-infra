@@ -1,0 +1,40 @@
+---
+# Configure HA backup encryption key to match HA_BACKUP_ENCRYPT_KEY secret.
+# Runs after maintenance deploy or fresh install — NOT after DR restore
+# (backup.manager is already restored from backup in that case).
+#
+# Uses HA REST API with short-lived token from username/password auth.
+# Script runs INSIDE the container where localhost:port is accessible.
+
+- name: Copy backup key configuration script to target
+  ansible.builtin.copy:
+    src: configure_backup_key.py
+    dest: /tmp/configure_backup_key.py
+    mode: "0644"
+
+- name: Copy script into HA container
+  ansible.builtin.shell: |
+    sg docker -c 'docker cp /tmp/configure_backup_key.py {{ ha_container_name }}:/tmp/configure_backup_key.py'
+  changed_when: false
+
+- name: Configure backup encryption key via HA API
+  ansible.builtin.shell: |
+    sg docker -c 'docker exec {{ ha_container_name }} python3 /tmp/configure_backup_key.py \
+      {{ ha_host_port }} \
+      {{ ha_user_username | quote }} \
+      {{ ha_user_password | quote }} \
+      {{ ha_backup_encrypt_key | quote }}'
+  register: backup_key_result
+  no_log: true
+  changed_when: true
+
+- name: Show backup key configuration result
+  ansible.builtin.debug:
+    msg: "{{ backup_key_result.stdout }}"
+
+- name: Clean up script from container and target
+  ansible.builtin.shell: |
+    sg docker -c 'docker exec {{ ha_container_name }} rm -f /tmp/configure_backup_key.py' || true
+    rm -f /tmp/configure_backup_key.py
+  changed_when: false
+  failed_when: false
