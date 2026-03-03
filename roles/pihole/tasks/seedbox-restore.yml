@@ -135,13 +135,16 @@
         - seedbox_type == 'native'
 
     - name: Get Docker volume paths for Docker PiHole seedbox
+      vars:
+        fmt_names: !unsafe "{{.Names}}"
+        fmt_mounts: !unsafe "{{range .Mounts}}{{.Source}} {{.Destination}}{{println}}{{end}}"
       ansible.builtin.shell: |
         ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no {{ seedbox_user }}@{{ seedbox_ip }} "
-          CONTAINER=\$(docker ps --filter 'ancestor=pihole/pihole' --format '{{{{.Names}}}}' | head -1)
+          CONTAINER=\$(docker ps --filter 'ancestor=pihole/pihole' --format '{{ fmt_names }}' | head -1)
           if [ -z \"\$CONTAINER\" ]; then
             CONTAINER=\$(docker ps | grep pihole | awk '{print \$NF}' | head -1)
           fi
-          docker inspect \"\$CONTAINER\" --format '{{{{range .Mounts}}}}{{{{.Source}}}} {{{{.Destination}}}}{{{{println}}}}{{{{end}}}}' 2>/dev/null
+          docker inspect \"\$CONTAINER\" --format '{{ fmt_mounts }}' 2>/dev/null
         "
       register: seedbox_volume_check
       changed_when: false
