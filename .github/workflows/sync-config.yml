@@ -240,7 +240,7 @@ jobs:
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
 
-          git commit -m "Auto-sync ${{ steps.device.outputs.device }} $(date +%Y-%m-%d)
+          git commit -m "Auto-sync ${{ steps.device.outputs.device }} $(date +%Y-%m-%d) [skip ci]
 
           Synced from ${{ steps.config.outputs.source_host }}
           Files changed: ${{ steps.changes.outputs.changed_count }}"
