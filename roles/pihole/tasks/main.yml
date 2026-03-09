@@ -35,6 +35,20 @@
   ansible.builtin.include_tasks: docker-install.yml
   when: "'pihole_target' in group_names"
 
+# Mask Plymouth services - useless on headless servers, causes systemd job hangs
+- name: Mask Plymouth boot splash services (headless server fix)
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    masked: true
+  loop:
+    - plymouth.service
+    - plymouth-start.service
+    - plymouth-quit.service
+    - plymouth-quit-wait.service
+  become: true
+  when: "'pihole_target' in group_names"
+  failed_when: false
+
 # Argon One case fan configuration (optional, Pi4 only)
 - name: Include Argon One fan setup
   ansible.builtin.include_tasks: argon-fan.yml
