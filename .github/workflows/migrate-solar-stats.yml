@@ -1,0 +1,88 @@
+name: Migrate Solar Stats (eenmalig)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  migrate:
+    name: Import historical solar statistics
+    runs-on: ["self-hosted", "homeassistant", "prod"]
+
+    steps:
+      - name: Import statistics
+        env:
+          HA_TOKEN: ${{ secrets.HA_LONG_LIVED_TOKEN_GH_ACTIONS_GIT_SYNC }}
+        run: |
+          HA_URL="http://localhost:8123"
+
+          import_stats() {
+            local payload="$1"
+            HTTP=$(curl -s -o /tmp/ha_resp.json -w "%{http_code}" \
+              -X POST "$HA_URL/api/services/recorder/import_statistics" \
+              -H "Authorization: Bearer $HA_TOKEN" \
+              -H "Content-Type: application/json" \
+              -d "$payload")
+            echo "HTTP $HTTP: $(cat /tmp/ha_resp.json)"
+          }
+
+          echo "=== Forecast kWh ==="
+          import_stats '{
+            "has_mean": true, "has_sum": false,
+            "statistic_id": "sensor.solar_forecast_kwh_stats",
+            "source": "recorder",
+            "unit_of_measurement": "kWh",
+            "stats": [
+              {"start": "2026-04-13T20:00:00+00:00", "mean": 33.448, "min": 33.448, "max": 33.448},
+              {"start": "2026-04-14T20:00:00+00:00", "mean": 24.162, "min": 24.162, "max": 24.162},
+              {"start": "2026-04-15T20:00:00+00:00", "mean": 22.363, "min": 22.363, "max": 22.363},
+              {"start": "2026-04-16T20:00:00+00:00", "mean": 18.947, "min": 18.947, "max": 18.947},
+              {"start": "2026-04-17T20:00:00+00:00", "mean": 13.377, "min": 13.377, "max": 13.377},
+              {"start": "2026-04-18T20:00:00+00:00", "mean": 31.46,  "min": 31.46,  "max": 31.46},
+              {"start": "2026-04-19T20:00:00+00:00", "mean": 32.974, "min": 32.974, "max": 32.974},
+              {"start": "2026-04-20T20:00:00+00:00", "mean": 20.462, "min": 20.462, "max": 20.462},
+              {"start": "2026-04-21T20:00:00+00:00", "mean": 45.197, "min": 45.197, "max": 45.197},
+              {"start": "2026-04-22T20:00:00+00:00", "mean": 44.85,  "min": 44.85,  "max": 44.85}
+            ]
+          }'
+
+          echo "=== Actual kWh ==="
+          import_stats '{
+            "has_mean": true, "has_sum": false,
+            "statistic_id": "sensor.solar_actual_kwh_stats",
+            "source": "recorder",
+            "unit_of_measurement": "kWh",
+            "stats": [
+              {"start": "2026-04-13T18:00:00+00:00", "mean": 15.7, "min": 15.7, "max": 15.7},
+              {"start": "2026-04-14T18:00:00+00:00", "mean": 34.5, "min": 34.5, "max": 34.5},
+              {"start": "2026-04-15T18:00:00+00:00", "mean": 28.9, "min": 28.9, "max": 28.9},
+              {"start": "2026-04-16T18:00:00+00:00", "mean": 27.8, "min": 27.8, "max": 27.8},
+              {"start": "2026-04-17T18:00:00+00:00", "mean": 28.3, "min": 28.3, "max": 28.3},
+              {"start": "2026-04-18T18:00:00+00:00", "mean":  7.6, "min":  7.6, "max":  7.6},
+              {"start": "2026-04-19T18:00:00+00:00", "mean": 26.3, "min": 26.3, "max": 26.3},
+              {"start": "2026-04-20T18:00:00+00:00", "mean": 25.1, "min": 25.1, "max": 25.1},
+              {"start": "2026-04-21T18:00:00+00:00", "mean": 22.6, "min": 22.6, "max": 22.6},
+              {"start": "2026-04-22T18:00:00+00:00", "mean": 36.8, "min": 36.8, "max": 36.8}
+            ]
+          }'
+
+          echo "=== Charge Decision (0=no_charge, alle dagen) ==="
+          import_stats '{
+            "has_mean": true, "has_sum": false,
+            "statistic_id": "sensor.solar_charge_decision_stats",
+            "source": "recorder",
+            "unit_of_measurement": "",
+            "stats": [
+              {"start": "2026-04-13T20:00:00+00:00", "mean": 0, "min": 0, "max": 0},
+              {"start": "2026-04-14T20:00:00+00:00", "mean": 0, "min": 0, "max": 0},
+              {"start": "2026-04-15T20:00:00+00:00", "mean": 0, "min": 0, "max": 0},
+              {"start": "2026-04-16T20:00:00+00:00", "mean": 0, "min": 0, "max": 0},
+              {"start": "2026-04-17T20:00:00+00:00", "mean": 0, "min": 0, "max": 0},
+              {"start": "2026-04-18T20:00:00+00:00", "mean": 0, "min": 0, "max": 0},
+              {"start": "2026-04-19T20:00:00+00:00", "mean": 0, "min": 0, "max": 0},
+              {"start": "2026-04-20T20:00:00+00:00", "mean": 0, "min": 0, "max": 0},
+              {"start": "2026-04-21T20:00:00+00:00", "mean": 0, "min": 0, "max": 0},
+              {"start": "2026-04-22T20:00:00+00:00", "mean": 0, "min": 0, "max": 0}
+            ]
+          }'
+
+          echo "✅ Migratie klaar"
