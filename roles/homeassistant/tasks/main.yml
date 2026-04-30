@@ -111,6 +111,20 @@
   become: true
   when: "'ha_target' in group_names and ansible_hostname != ha_hostname"
 
+- name: Check WiFi radio state
+  ansible.builtin.command: nmcli radio wifi
+  register: _wifi_state
+  changed_when: false
+  become: true
+  when: "'ha_target' in group_names"
+
+- name: Disable WiFi radio (wired-only server)
+  ansible.builtin.command: nmcli radio wifi off
+  become: true
+  when:
+    - "'ha_target' in group_names"
+    - "'enabled' in _wifi_state.stdout"
+
 # Ensure target can run apt/system tasks without prompts (CI-friendly)
 - name: Include sudoers setup for target
   ansible.builtin.include_tasks: sudoers.yml
