@@ -51,7 +51,8 @@ jobs:
           git clone \
             https://${GH_USERNAME}:${GH_PAT}@github.com/johantre/homelab-infra.git \
             ~/homelab/infra
-          
+          git -C ~/homelab/infra remote set-url origin https://github.com/johantre/homelab-infra.git
+
           # Verify
           if [[ ! -f ~/homelab/infra/site.yml ]]; then
             echo "❌ CRITICAL: site.yml not found in infra repo!"
@@ -80,7 +81,8 @@ jobs:
           git clone \
             https://${GH_USERNAME}:${GH_PAT}@github.com/johantre/homelab-config.git \
             ~/homelab/config
-          
+          git -C ~/homelab/config remote set-url origin https://github.com/johantre/homelab-config.git
+
           # Verify homeassistant directory exists
           if [[ ! -d ~/homelab/config/homeassistant ]]; then
             echo "❌ CRITICAL: homeassistant directory not found!"

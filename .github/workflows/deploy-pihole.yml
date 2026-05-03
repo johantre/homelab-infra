@@ -46,6 +46,7 @@ jobs:
           git clone \
             https://${GH_USERNAME}:${GH_PAT}@github.com/johantre/homelab-infra.git \
             ~/homelab/infra
+          git -C ~/homelab/infra remote set-url origin https://github.com/johantre/homelab-infra.git
 
           if [[ ! -f ~/homelab/infra/site.yml ]]; then
             echo "❌ CRITICAL: site.yml not found in infra repo!"
@@ -69,6 +70,7 @@ jobs:
           git clone \
             https://${GH_USERNAME}:${GH_PAT}@github.com/johantre/homelab-config.git \
             ~/homelab/config
+          git -C ~/homelab/config remote set-url origin https://github.com/johantre/homelab-config.git
 
           if [[ ! -d ~/homelab/config/pihole ]]; then
             echo "❌ CRITICAL: pihole directory not found in config repo!"
