@@ -248,6 +248,15 @@ jobs:
           git push origin main
           echo "✅ Pushed to GitHub"
 
+      - name: Update local config clone after push
+        if: steps.check_flag.outputs.should_sync == 'true' && steps.changes.outputs.has_changes == 'true'
+        run: |
+          ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no \
+            ${{ steps.config.outputs.source_user }}@${{ steps.config.outputs.source_host }} \
+            "git -C ~/homelab/config pull origin main --ff-only" \
+            && echo "✅ Local config clone updated" \
+            || echo "⚠️ Could not update local config clone (non-fatal)"
+
       - name: Reset HA flag
         if: steps.check_flag.outputs.should_sync == 'true' && steps.conflict.outputs.conflict != 'true'
         run: |
