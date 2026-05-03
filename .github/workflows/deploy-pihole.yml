@@ -83,6 +83,17 @@ jobs:
           echo "PiHole config preview:"
           ls -la ~/homelab/config/pihole/ | head -n 10
 
+      - name: Verify no credentials in git remote URLs
+        run: |
+          for repo in ~/homelab/infra ~/homelab/config; do
+            URL=$(git -C "$repo" remote get-url origin 2>/dev/null || echo "not found")
+            if [[ "$URL" == *"@"* ]]; then
+              echo "❌ SECURITY: credentials found in remote URL for $repo"
+              exit 1
+            fi
+            echo "✅ $repo: clean remote URL"
+          done
+
       - name: Verify all secrets are present
         run: |
           echo "🔍 Verifying all required secrets..."

@@ -101,12 +101,23 @@ jobs:
           echo "Homeassistant config preview:"
           ls -la ~/homelab/config/homeassistant/ | head -n 5
 
+      - name: Verify no credentials in git remote URLs
+        run: |
+          for repo in ~/homelab/infra ~/homelab/config; do
+            URL=$(git -C "$repo" remote get-url origin 2>/dev/null || echo "not found")
+            if [[ "$URL" == *"@"* ]]; then
+              echo "❌ SECURITY: credentials found in remote URL for $repo"
+              exit 1
+            fi
+            echo "✅ $repo: clean remote URL"
+          done
+
       - name: Verify all secrets are present
         run: |
           echo "🔍 Verifying all required secrets..."
-          
+
           MISSING_SECRETS=()
-          
+
           [[ -z "${{ secrets.GH_USERNAME }}" ]] && MISSING_SECRETS+=("GH_USERNAME")
           [[ -z "${{ secrets.GH_PAT }}" ]] && MISSING_SECRETS+=("GH_PAT")
           [[ -z "${{ secrets.HA_USER_USERNAME }}" ]] && MISSING_SECRETS+=("HA_USER_USERNAME")
