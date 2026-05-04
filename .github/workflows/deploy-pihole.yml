@@ -55,37 +55,17 @@ jobs:
 
           echo "✅ Infra repository cloned"
 
-      - name: Clone config repository
-        env:
-          GH_PAT: ${{ secrets.GH_PAT }}
-          GH_USERNAME: ${{ secrets.GH_USERNAME }}
-        run: |
-          echo "📦 Cloning homelab-config repository..."
-
-          if [[ -d ~/homelab/config ]]; then
-            echo "Removing old config..."
-            rm -rf ~/homelab/config
-          fi
-
-          git clone \
-            https://${GH_USERNAME}:${GH_PAT}@github.com/johantre/homelab-config.git \
-            ~/homelab/config
-          git -C ~/homelab/config remote set-url origin https://github.com/johantre/homelab-config.git
-
-          if [[ ! -d ~/homelab/config/pihole ]]; then
-            echo "❌ CRITICAL: pihole directory not found in config repo!"
-            echo "Config repo contents:"
-            ls -la ~/homelab/config/
-            exit 1
-          fi
-
-          echo "✅ Config repository cloned"
-          echo "PiHole config preview:"
-          ls -la ~/homelab/config/pihole/ | head -n 10
+      - name: Checkout config repository
+        uses: actions/checkout@v4
+        with:
+          repository: johantre/homelab-config
+          token: ${{ secrets.GH_PAT }}
+          fetch-depth: 1
+          path: config-repo
 
       - name: Verify no credentials in git remote URLs
         run: |
-          for repo in ~/homelab/infra ~/homelab/config; do
+          for repo in ~/homelab/infra; do
             URL=$(git -C "$repo" remote get-url origin 2>/dev/null || echo "not found")
             if [[ "$URL" == *"@"* ]]; then
               echo "❌ SECURITY: credentials found in remote URL for $repo"
@@ -199,6 +179,7 @@ jobs:
             -i inventories/pihole_target_local.ini \
             deploy-pihole.yml \
             -e maintenance_mode=${{ github.event.inputs.maintenance_mode || 'true' }} \
+            -e config_repo_path=$GITHUB_WORKSPACE/config-repo \
             -vv \
             2>&1 | tee ansible-deploy-pihole.log
 

@@ -29,7 +29,8 @@ Make sure you have the following:
 - [ ] ✅ USB stick (8GB+)
 - [ ] ✅ Controller node (other laptop with Ansible)
 - [ ] ✅ GitHub repository access
-- [ ] ✅ `.env` file with secrets (backup of this!)
+- [ ] ✅ `.env` file with secrets (backup of this!, must contain `CONFIG_REPO_PATH`)
+- [ ] ✅ `homelab-config` cloned on controller — zie **Scenario B** voor clone-commando
 - [ ] ✅ Network access to seedbox (optional)
 - [ ] ✅ Local backup encrypted files (optional, in `/mnt/backup/homeassistant/`)
 
@@ -364,6 +365,13 @@ sequenceDiagram
 ### Quick Recovery from Controller node
 
 ```bash
+# Stap 1: Zorg dat homelab-config lokaal beschikbaar is op het pad in CONFIG_REPO_PATH (.env)
+# De workflow doet dit niet meer automatisch — bij manuele deploy zelf doen!
+[ -d ~/homelab/config ] \
+  && git -C ~/homelab/config pull \
+  || git clone https://github.com/johantre/homelab-config.git ~/homelab/config
+
+# Stap 2: Deploy
 cd ~/homelab/infra
 
 # Option 1: Normal recovery (preserves existing .storage/)
@@ -500,6 +508,8 @@ HA_USER_PASSWORD=xxx
 HA_BACKUP_ENCRYPT_KEY=xxx
 HA_LONG_LIVED_TOKEN_GH_ACTIONS_GIT_SYNC=xxx
 SSH_PRIV_KEY_B64=xxx
+PIHOLE_WEB_PASSWORD=xxx
+CONFIG_REPO_PATH=/home/<user>/homelab/config   # pad naar lokale homelab-config clone (voor manuele deploy)
 ```
 
 ### 2. SSH Keys

@@ -167,7 +167,7 @@
 
 - name: Sync repo from controller → target (ha_target group)
   ansible.posix.synchronize:
-    src: "{{ lookup('env', 'HOME') }}/homelab/config/homeassistant/"
+    src: "{{ ha_config_repo_dir }}/"
     dest: "{{ ha_config_dir }}/"
     delete: yes
     compress: yes
@@ -186,7 +186,7 @@
   ansible.builtin.command: >
     rsync -a --delete --no-owner --no-group --no-perms --omit-dir-times
            --exclude=".storage/" --exclude="deps/" --exclude="**.db*" --exclude="*.log*"
-           {{ lookup('env', 'HOME') }}/homelab/config/homeassistant/
+           {{ ha_config_repo_dir }}/
            {{ ha_config_dir }}/
   when: "'ha' in group_names"
   changed_when: false

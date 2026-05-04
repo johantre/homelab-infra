@@ -6,6 +6,7 @@
     gh_username: "{{ gh_username | default(lookup('ini', 'GH_USERNAME file=' + env_file + ' type=properties'), true) }}"
     gh_pat:       "{{ gh_pat       | default(lookup('ini', 'GH_PAT file=' + env_file + ' type=properties'), true) }}"
     pihole_web_password: "{{ pihole_web_password | default(lookup('ini', 'PIHOLE_WEB_PASSWORD file=' + env_file + ' type=properties'), true) }}"
+    config_repo_path: "{{ config_repo_path | default(lookup('ini', 'CONFIG_REPO_PATH file=' + env_file + ' type=properties'), true) }}"
   when: env_file is defined
 
 ## 2) No env_file given, get from OS-env
@@ -16,6 +17,7 @@
     gh_pat:       "{{ gh_pat       | default(lookup('env','GH_PAT'), true) }}"
     ssh_priv_key_b64: "{{ ssh_priv_key_b64 | default(lookup('env','SSH_PRIV_KEY_B64'), true) }}"
     pihole_web_password: "{{ pihole_web_password | default(lookup('env','PIHOLE_WEB_PASSWORD'), true) }}"
+    config_repo_path: "{{ config_repo_path | default(lookup('env','CONFIG_REPO_PATH'), true) }}"
   when: env_file is not defined
 
 - name: Assert GitHub tokens present
@@ -25,6 +27,13 @@
       - gh_username | length > 0
       - gh_pat | length > 0
     fail_msg: "❌ Missing GH_USERNAME or GH_PAT (via --extra-vars, env_file, or OS env). ❌"
+
+- name: Assert config_repo_path is set
+  ansible.builtin.assert:
+    that:
+      - config_repo_path is defined
+      - config_repo_path | length > 0
+    fail_msg: "❌ Missing config_repo_path. GitHub Actions: pass -e config_repo_path=$GITHUB_WORKSPACE/config-repo. Linux box: set CONFIG_REPO_PATH in env_file. ❌"
 
 - name: Assert SSH private key present when connection is local
   no_log: true

@@ -64,46 +64,17 @@ jobs:
           # Change to infra directory for rest of workflow
           cd ~/homelab/infra
 
-      - name: Clone config repository
-        env:
-          GH_PAT: ${{ secrets.GH_PAT }}
-          GH_USERNAME: ${{ secrets.GH_USERNAME }}
-        run: |
-          echo "📦 Cloning homelab-config repository..."
-          
-          # Remove old config if exists
-          if [[ -d ~/homelab/config ]]; then
-            echo "Removing old config..."
-            rm -rf ~/homelab/config
-          fi
-          
-          # Clone config repo
-          git clone \
-            https://${GH_USERNAME}:${GH_PAT}@github.com/johantre/homelab-config.git \
-            ~/homelab/config
-          git -C ~/homelab/config remote set-url origin https://github.com/johantre/homelab-config.git
-
-          # Verify homeassistant directory exists
-          if [[ ! -d ~/homelab/config/homeassistant ]]; then
-            echo "❌ CRITICAL: homeassistant directory not found!"
-            echo "Config repo contents:"
-            ls -la ~/homelab/config/
-            exit 1
-          fi
-          
-          # Verify configuration.yaml exists
-          if [[ ! -f ~/homelab/config/homeassistant/configuration.yaml ]]; then
-            echo "❌ CRITICAL: configuration.yaml not found!"
-            exit 1
-          fi
-          
-          echo "✅ Config repository cloned"
-          echo "Homeassistant config preview:"
-          ls -la ~/homelab/config/homeassistant/ | head -n 5
+      - name: Checkout config repository
+        uses: actions/checkout@v4
+        with:
+          repository: johantre/homelab-config
+          token: ${{ secrets.GH_PAT }}
+          fetch-depth: 1
+          path: config-repo
 
       - name: Verify no credentials in git remote URLs
         run: |
-          for repo in ~/homelab/infra ~/homelab/config; do
+          for repo in ~/homelab/infra; do
             URL=$(git -C "$repo" remote get-url origin 2>/dev/null || echo "not found")
             if [[ "$URL" == *"@"* ]]; then
               echo "❌ SECURITY: credentials found in remote URL for $repo"
@@ -236,6 +207,7 @@ jobs:
             deploy-ha.yml \
             -e maintenance_mode=${{ github.event.inputs.maintenance_mode || 'true' }} \
             -e ha_version_override=${{ github.event.inputs.ha_version_override }} \
+            -e config_repo_path=$GITHUB_WORKSPACE/config-repo \
             -vv \
             2>&1 | tee ansible-deploy.log
           

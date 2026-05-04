@@ -7,6 +7,7 @@
     gh_pat:       "{{ gh_pat       | default(lookup('ini', 'GH_PAT file=' + env_file + ' type=properties'), true) }}"
     cf_tunnel_token:  "{{ cf_tunnel_token  | default(lookup('ini', 'CF_TUNNEL_TOKEN file=' + env_file + ' type=properties'), true) }}"
     ha_backup_encrypt_key: "{{ ha_backup_encrypt_key | default(lookup('ini', 'HA_BACKUP_ENCRYPT_KEY file=' + env_file + ' type=properties'), true) }}"
+    config_repo_path: "{{ config_repo_path | default(lookup('ini', 'CONFIG_REPO_PATH file=' + env_file + ' type=properties'), true) }}"
   when: env_file is defined
 
 ## 2) No env_file given, get from OS-env
@@ -18,6 +19,7 @@
     cf_tunnel_token:  "{{ cf_tunnel_token  | default(lookup('env','CF_TUNNEL_TOKEN'), true) }}"
     ssh_priv_key_b64: "{{ ssh_priv_key_b64 | default(lookup('env','SSH_PRIV_KEY_B64'), true) }}"
     ha_backup_encrypt_key: "{{ ha_backup_encrypt_key | default(lookup('env','HA_BACKUP_ENCRYPT_KEY'), true) }}"
+    config_repo_path: "{{ config_repo_path | default(lookup('env','CONFIG_REPO_PATH'), true) }}"
   when: env_file is not defined
 
 # Loud fail – explicit & clear
@@ -28,6 +30,13 @@
       - gh_username | length > 0
       - gh_pat | length > 0
     fail_msg: "❌ Missing GH_USERNAME or GH_PAT (via --extra-vars, env_file, or OS env). ❌"
+
+- name: Assert config_repo_path is set
+  ansible.builtin.assert:
+    that:
+      - config_repo_path is defined
+      - config_repo_path | length > 0
+    fail_msg: "❌ Missing config_repo_path. GitHub Actions: pass -e config_repo_path=$GITHUB_WORKSPACE/config-repo. Linux box: set CONFIG_REPO_PATH in env_file. ❌"
 
 - name: Assert CF_TUNNEL_TOKEN present when cloudflared is enabled
   no_log: true

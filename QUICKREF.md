@@ -4,6 +4,12 @@ One-page cheat sheet for common homelab operations.
 
 ## 🚀 Quick Deploys
 
+> **Let op:** bij manuele deploy vanaf Linux box moet `homelab-config` lokaal beschikbaar zijn:
+> ```bash
+> [ -d ~/homelab/config ] && git -C ~/homelab/config pull || git clone https://github.com/johantre/homelab-config.git ~/homelab/config
+> ```
+> Het pad staat in `CONFIG_REPO_PATH` in `~/homelab/.env`. GitHub Actions doet de checkout automatisch.
+
 ```bash
 # Standard deploy:
 ansible-playbook -i inventories/ha_target_remote.ini site.yml -l ha_target -e env_file=../.env
