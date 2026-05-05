@@ -24,6 +24,37 @@
 
 ---
 
+## 🌐 Router DNS-configuratie (belangrijk!)
+
+### Secundaire DNS instellen
+
+Stel op de router altijd een **secundaire DNS** in naast het PiHole-IP:
+
+| DNS | Waarde |
+|-----|--------|
+| Primair | `192.168.3.11` (PiHole) |
+| Secundair | `1.1.1.1` (Cloudflare) of `8.8.8.8` (Google) |
+
+**Waarom:** tijdens een redeploy is PiHole ~2-3 minuten offline. Zonder secundaire DNS is er in die periode geen internet. De router valt automatisch terug op de secundaire DNS bij een timeout — zonder dat je manueel hoeft in te grijpen.
+
+### Heeft de secundaire DNS invloed op ad blocking?
+
+**Nee.** PiHole blokkeert door actief te antwoorden met `0.0.0.0` (sinkhole). De router ziet dit als een geldig DNS-antwoord en vraagt de secundaire DNS nooit. De fallback treedt alleen in werking als PiHole helemaal niet reageert (timeout/down).
+
+```
+Apparaat → Router → PiHole: "ads.tracker.com?"
+                  ← PiHole: "0.0.0.0"   ← geldig antwoord → klaar
+                  (1.1.1.1 wordt nooit gevraagd)
+```
+
+> **Let op:** stel de secundaire DNS in op de **router**, niet op individuele apparaten. Android en sommige andere OS'en vragen meerdere DNS-servers parallel en nemen de snelste reactie — dan kan 1.1.1.1 de PiHole-blokkering omzeilen.
+
+### Tijdens een redeploy
+
+Je hoeft de router-DNS **niet** manueel aan te passen als je een secundaire DNS hebt ingesteld. De workflow doet alles automatisch, en de router valt tijdelijk terug op de secundaire DNS zonder dat je er iets voor moet doen.
+
+---
+
 ## 🔄 Migration Strategy
 
 The migration follows this order:
