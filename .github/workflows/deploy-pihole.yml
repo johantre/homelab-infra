@@ -55,6 +55,15 @@ jobs:
 
           echo "✅ Infra repository cloned"
 
+      - name: Remove legacy homelab/config clone
+        run: |
+          if [[ -d ~/homelab/config ]]; then
+            rm -rf ~/homelab/config
+            echo "Removed legacy ~/homelab/config"
+          else
+            echo "~/homelab/config not present, nothing to do"
+          fi
+
       - name: Checkout config repository
         uses: actions/checkout@v4
         with:
