@@ -31,8 +31,14 @@ jobs:
           clean: true
           fetch-depth: 1
 
-      - name: Remove legacy homelab/config clone
+      - name: Remove legacy homelab clones
         run: |
+          if [[ -d ~/homelab/infra ]]; then
+            rm -rf ~/homelab/infra
+            echo "Removed legacy ~/homelab/infra"
+          else
+            echo "~/homelab/infra not present, nothing to do"
+          fi
           if [[ -d ~/homelab/config ]]; then
             rm -rf ~/homelab/config
             echo "Removed legacy ~/homelab/config"
