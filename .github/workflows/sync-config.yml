@@ -113,6 +113,30 @@ jobs:
           echo "::notice::No sync needed. git_sync_needed flag is off."
           echo "To force sync, use workflow_dispatch with skip_check=true"
 
+      - name: Check force flag from HA
+        id: check_force
+        if: steps.check_flag.outputs.should_sync == 'true'
+        run: |
+          HTTP_CODE=$(curl -s -o /tmp/ha_force_response.json -w "%{http_code}" \
+            -X GET "$HA_URL/api/states/input_boolean.git_sync_force" \
+            -H "Authorization: Bearer ${{ secrets.HA_LONG_LIVED_TOKEN_GH_ACTIONS_GIT_SYNC }}" \
+            -H "Content-Type: application/json")
+
+          HA_FORCE="false"
+          if [ "$HTTP_CODE" == "200" ]; then
+            STATE=$(python3 -c "import sys,json; print(json.load(open('/tmp/ha_force_response.json')).get('state','off'))" 2>/dev/null || echo "off")
+            [ "$STATE" == "on" ] && HA_FORCE="true"
+          fi
+
+          DISPATCH_FORCE="${{ steps.device.outputs.force }}"
+          if [ "$HA_FORCE" == "true" ] || [ "$DISPATCH_FORCE" == "true" ]; then
+            echo "force=true" >> $GITHUB_OUTPUT
+            echo "🔴 Force sync requested (HA flag: $HA_FORCE, dispatch: $DISPATCH_FORCE)"
+          else
+            echo "force=false" >> $GITHUB_OUTPUT
+            echo "📋 Normal sync"
+          fi
+
       - name: Checkout config repo
         if: steps.check_flag.outputs.should_sync == 'true'
         uses: actions/checkout@v4
@@ -183,7 +207,7 @@ jobs:
 
           echo "📋 Files in GitHub not present in living config: $DELETIONS"
 
-          if [ "$DELETIONS" -gt 0 ] && [ "${{ steps.device.outputs.force }}" != "true" ]; then
+          if [ "$DELETIONS" -gt 0 ] && [ "${{ steps.check_force.outputs.force }}" != "true" ]; then
             echo "conflict=true" >> $GITHUB_OUTPUT
             echo "::error::CONFLICT: $DELETIONS file(s) in GitHub are missing from living config!"
             echo "::error::These may be undeployed changes. Deploy first, or use force=true"
@@ -214,6 +238,17 @@ jobs:
       - name: Abort on conflict
         if: steps.check_flag.outputs.should_sync == 'true' && steps.conflict.outputs.conflict == 'true'
         run: exit 1
+
+      - name: Create safety branch before force sync
+        if: steps.check_flag.outputs.should_sync == 'true' && steps.check_force.outputs.force == 'true'
+        working-directory: config-repo
+        run: |
+          BRANCH="pre-force-sync/$(date +%Y-%m-%d-%H%M)"
+          git checkout -b "$BRANCH"
+          git push origin "$BRANCH"
+          git checkout main
+          echo "✅ Safety branch created: $BRANCH"
+          echo "   GitHub changes preserved before force sync"
 
       - name: Rsync from device
         if: steps.check_flag.outputs.should_sync == 'true' && steps.conflict.outputs.conflict != 'true'
@@ -264,11 +299,15 @@ jobs:
       - name: Reset HA flag
         if: steps.check_flag.outputs.should_sync == 'true' && steps.conflict.outputs.conflict != 'true'
         run: |
-          # Turn off git_sync_needed
+          # Turn off git_sync_needed and git_sync_force
           curl -s -X POST "$HA_URL/api/services/input_boolean/turn_off" \
             -H "Authorization: Bearer ${{ secrets.HA_LONG_LIVED_TOKEN_GH_ACTIONS_GIT_SYNC }}" \
             -H "Content-Type: application/json" \
             -d '{"entity_id": "input_boolean.git_sync_needed"}' || true
+          curl -s -X POST "$HA_URL/api/services/input_boolean/turn_off" \
+            -H "Authorization: Bearer ${{ secrets.HA_LONG_LIVED_TOKEN_GH_ACTIONS_GIT_SYNC }}" \
+            -H "Content-Type: application/json" \
+            -d '{"entity_id": "input_boolean.git_sync_force"}' || true
 
           # Update status
           MSG="Synced ${{ steps.changes.outputs.changed_count || '0' }} files"
