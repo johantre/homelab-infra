@@ -70,6 +70,9 @@ argon_fan_curve_default: |
   65=70
   75=100
 
+# --- NanoPi R6S Router
+nanopirouter_hostname: "nanopirouter-ansible"
+
 # --- PiHole
 pihole_hostname: "pihole-ansible"
 pihole_version: "latest"

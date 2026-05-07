@@ -286,9 +286,10 @@ gather_config() {
     echo -e "${GREEN}Configuration for post-install setup${NC}"
     echo
 
-    echo -ne "${YELLOW}Hostname [homeassistant]: ${NC}"
+    local default_hostname="${DEFAULT_HOSTNAME:-homeassistant}"
+    echo -ne "${YELLOW}Hostname [${default_hostname}]: ${NC}"
     read HOSTNAME
-    HOSTNAME=${HOSTNAME:-homeassistant}
+    HOSTNAME=${HOSTNAME:-${default_hostname}}
 
     echo
     echo -ne "${YELLOW}Environment [prod/dev] (default: prod): ${NC}"
@@ -2120,6 +2121,291 @@ README_EOF
 }
 
 #==============================================================================
+# NANOPI R6S (RK3588S) eMMC FLASH VIA MASKROM
+#==============================================================================
+
+get_latest_armbian_r6s_image() {
+    local lts_only=$1   # "yes" = Noble 24.04 LTS, "no" = latest non-LTS
+    local variant=$2    # "minimal" or "gnome"
+
+    local codename
+    if [ "$lts_only" = "yes" ]; then
+        codename="Noble"
+    else
+        # Try latest non-LTS first, fall back to Noble
+        for try_codename in Plucky Oracular Noble; do
+            local try_url="https://dl.armbian.com/nanopi-r6s/${try_codename}_current_${variant}"
+            local resolved
+            resolved=$(curl -sL -o /dev/null -w "%{url_effective}" "$try_url" 2>/dev/null)
+            if [[ "$resolved" != "$try_url" && "$resolved" == *".img.xz"* ]]; then
+                codename="$try_codename"
+                break
+            fi
+        done
+        codename="${codename:-Noble}"
+    fi
+
+    local url="https://dl.armbian.com/nanopi-r6s/${codename}_current_${variant}"
+    echo -e "${BLUE}Checking Armbian image (${codename})...${NC}" >&2
+
+    local actual_url
+    actual_url=$(curl -sL -o /dev/null -w "%{url_effective}" "$url" 2>/dev/null)
+
+    if [[ -z "$actual_url" || "$actual_url" == "$url" || "$actual_url" != *".img.xz"* ]]; then
+        echo -e "${RED}[ERROR] Armbian image not found for ${codename}_current_${variant}${NC}" >&2
+        return 1
+    fi
+
+    local filename
+    filename=$(basename "$actual_url")
+    echo -e "${GREEN}Found: $filename${NC}" >&2
+    echo "${actual_url}|${filename}"
+}
+
+inject_r6s_firstboot() {
+    # Armbian RK3588S heeft geen aparte FAT32 boot partitie — cloud-init werkt niet.
+    # We injecteren rechtstreeks in de ext4 rootfs (p1).
+    local mount_point=$1
+    local setup_script_file=$2
+
+    # Disable Armbian first-run wizard (vraagt anders interactief naar root pwd)
+    sudo rm -f "$mount_point/root/.not_logged_in_yet" 2>/dev/null || true
+
+    # Keyboard layout (BE AZERTY)
+    sudo tee "$mount_point/etc/default/keyboard" > /dev/null << 'KEYBOARD_EOF'
+XKBMODEL="pc105"
+XKBLAYOUT="be"
+XKBVARIANT=""
+XKBOPTIONS=""
+BACKSPACE="guess"
+KEYBOARD_EOF
+
+    # Timezone
+    sudo ln -sf /usr/share/zoneinfo/Europe/Brussels \
+        "$mount_point/etc/localtime" 2>/dev/null || true
+    echo "Europe/Brussels" | sudo tee "$mount_point/etc/timezone" > /dev/null
+
+    # Password hash
+    local password_hash
+    password_hash=$(echo "$UBUNTU_PASSWORD" | openssl passwd -6 -stdin)
+
+    # Hostname
+    echo "$HOSTNAME" | sudo tee "$mount_point/etc/hostname" > /dev/null
+    sudo sed -i "s/127.0.1.1.*/127.0.1.1\t${HOSTNAME}/" "$mount_point/etc/hosts" 2>/dev/null || \
+        echo "127.0.1.1	${HOSTNAME}" | sudo tee -a "$mount_point/etc/hosts" > /dev/null
+
+    # Maak ubuntu user aan als die nog niet bestaat in de image
+    if ! sudo grep -q "^${UBUNTU_USER}:" "$mount_point/etc/passwd"; then
+        echo "${UBUNTU_USER}:x:1000:1000:${UBUNTU_FULLNAME}:/home/${UBUNTU_USER}:/bin/bash" \
+            | sudo tee -a "$mount_point/etc/passwd" > /dev/null
+        echo "${UBUNTU_USER}:!:19000:0:99999:7:::" \
+            | sudo tee -a "$mount_point/etc/shadow" > /dev/null
+        echo "${UBUNTU_USER}:x:1000:" \
+            | sudo tee -a "$mount_point/etc/group" > /dev/null
+    fi
+
+    # Voeg ubuntu toe aan benodigde groepen
+    for grp in sudo adm docker users plugdev; do
+        if sudo grep -q "^${grp}:" "$mount_point/etc/group"; then
+            sudo sed -i "/^${grp}:/ s/$/,${UBUNTU_USER}/" "$mount_point/etc/group" 2>/dev/null || true
+        fi
+    done
+
+    # Passwordless sudo
+    echo "${UBUNTU_USER} ALL=(ALL) NOPASSWD:ALL" \
+        | sudo tee "$mount_point/etc/sudoers.d/${UBUNTU_USER}" > /dev/null
+    sudo chmod 440 "$mount_point/etc/sudoers.d/${UBUNTU_USER}"
+
+    # Locale
+    echo "LANG=en_US.UTF-8" | sudo tee "$mount_point/etc/locale.conf" > /dev/null
+    grep -q "en_US.UTF-8" "$mount_point/etc/locale.gen" 2>/dev/null || \
+        echo "en_US.UTF-8 UTF-8" | sudo tee -a "$mount_point/etc/locale.gen" > /dev/null
+
+    # Password in shadow (ubuntu user)
+    sudo sed -i "s|^${UBUNTU_USER}:[^:]*:|${UBUNTU_USER}:${password_hash}:|" \
+        "$mount_point/etc/shadow"
+
+    # Maak home directory aan en fix ownership
+    sudo mkdir -p "$mount_point/home/${UBUNTU_USER}"
+    sudo chown 1000:1000 "$mount_point/home/${UBUNTU_USER}"
+    sudo chmod 755 "$mount_point/home/${UBUNTU_USER}"
+
+    # SSH key
+    if [ -n "$SSH_KEY" ]; then
+        local ssh_dir="$mount_point/home/${UBUNTU_USER}/.ssh"
+        sudo mkdir -p "$ssh_dir"
+        echo "$SSH_KEY" | sudo tee "$ssh_dir/authorized_keys" > /dev/null
+        sudo chmod 700 "$ssh_dir"
+        sudo chmod 600 "$ssh_dir/authorized_keys"
+        sudo chown -R 1000:1000 "$ssh_dir"
+    fi
+
+    # Firstboot setup script
+    sudo mkdir -p "$mount_point/opt/firstboot"
+    sudo cp "$setup_script_file" "$mount_point/opt/firstboot/setup-machine.sh"
+    sudo chmod 755 "$mount_point/opt/firstboot/setup-machine.sh"
+
+    # Systemd service — pas start na armbian-install (eMMC boot), niet op SD card
+    sudo tee "$mount_point/etc/systemd/system/firstboot-setup.service" > /dev/null << 'SERVICE_EOF'
+[Unit]
+Description=First Boot Setup
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/opt/firstboot/setup-machine.sh
+
+[Service]
+Type=oneshot
+ExecStart=/opt/firstboot/setup-machine.sh
+RemainAfterExit=yes
+StandardOutput=journal+console
+StandardError=journal+console
+
+[Install]
+WantedBy=multi-user.target
+SERVICE_EOF
+
+    # armbian-install script — kopieert SD naar eMMC en herstart
+    sudo tee "$mount_point/opt/firstboot/install-to-emmc.sh" > /dev/null << 'INSTALL_EOF'
+#!/bin/bash
+# Detecteer of we van SD card booten (mmcblk0 = SD, mmcblk1 = eMMC op R6S)
+ROOT_DEV=$(findmnt -n -o SOURCE / | sed 's/p[0-9]$//')
+if [[ "$ROOT_DEV" == *"mmcblk0"* ]]; then
+    echo "Booting from SD card — installing to eMMC..."
+    echo "1" | armbian-install
+fi
+INSTALL_EOF
+    sudo chmod 755 "$mount_point/opt/firstboot/install-to-emmc.sh"
+
+    # Enable service (symlink) — draait op eMMC, niet op SD (install-to-emmc.sh reset dit)
+    local wants_dir="$mount_point/etc/systemd/system/multi-user.target.wants"
+    sudo mkdir -p "$wants_dir"
+    sudo ln -sf /etc/systemd/system/firstboot-setup.service \
+        "$wants_dir/firstboot-setup.service"
+
+    echo -e "${GREEN}Firstboot config geïnjecteerd in rootfs${NC}"
+    echo -e "${BLUE}Fixes toegepast: Armbian wizard disabled, home dir ownership, armbian-install script${NC}"
+}
+
+create_r6s_emmc() {
+    local lts_only=$1
+    local image_type=$2   # "minimal" or "gnome"
+
+    echo -e "${GREEN}NanoPi R6S — Armbian via SD card naar eMMC${NC}"
+    echo
+
+    # Get image info
+    echo -e "${GREEN}Zoeken naar laatste Armbian image...${NC}"
+    local image_info
+    image_info=$(get_latest_armbian_r6s_image "$lts_only" "$image_type")
+    if [[ $? -ne 0 ]]; then
+        echo -e "${RED}Armbian image niet gevonden${NC}"
+        exit 1
+    fi
+    IFS='|' read -r IMAGE_URL IMAGE_NAME <<< "$image_info"
+    echo -e "${BLUE}Image: $IMAGE_NAME${NC}"
+    echo
+
+    rm -rf "$WORK_DIR"
+    mkdir -p "$WORK_DIR"
+    cd "$WORK_DIR"
+
+    # Download Armbian image (with cache)
+    local cached_image="$CACHE_DIR/$IMAGE_NAME"
+    if [ -f "$cached_image" ]; then
+        echo -e "${GREEN}Cached image gevonden: $IMAGE_NAME${NC}"
+        cp "$cached_image" "$WORK_DIR/$IMAGE_NAME"
+    else
+        echo -e "${GREEN}Armbian image downloaden...${NC}"
+        curl -L --progress-bar -o "$IMAGE_NAME" "$IMAGE_URL"
+        mkdir -p "$CACHE_DIR"
+        cp "$IMAGE_NAME" "$cached_image"
+    fi
+
+    # Decompress image
+    echo -e "${GREEN}Image decomprimeren...${NC}"
+    local img_name="${IMAGE_NAME%.xz}"
+    xz -d --keep "$IMAGE_NAME"
+
+    # Generate firstboot setup script
+    echo -e "${GREEN}Firstboot setup script genereren...${NC}"
+    generate_setup_script "$WORK_DIR/setup-machine.sh" "arm64"
+
+    # Mount rootfs (p1 = enige partitie bij Armbian RK3588S) en injecteer
+    echo -e "${GREEN}Firstboot config injecteren in rootfs...${NC}"
+    local loop_dev
+    loop_dev=$(sudo losetup -f --show -P "$img_name")
+
+    local mount_point="/tmp/r6s_rootfs"
+    mkdir -p "$mount_point"
+    sudo mount "${loop_dev}p1" "$mount_point"
+
+    inject_r6s_firstboot "$mount_point" "$WORK_DIR/setup-machine.sh"
+
+    sudo umount "$mount_point"
+    sudo losetup -d "$loop_dev"
+    rmdir "$mount_point" 2>/dev/null || true
+
+    # SD card detecteren en selecteren
+    echo -e "${GREEN}Step 4: Select SD Card${NC}"
+    echo
+    echo -e "${YELLOW}Steek de SD card in de Linux box en druk Enter...${NC}"
+    read
+
+    mapfile -t MMC_DEVICES < <(lsblk -d -o NAME,SIZE,TYPE,TRAN | awk '$3=="disk" && $4=="mmc" {print $1}')
+    if [ ${#MMC_DEVICES[@]} -eq 0 ]; then
+        echo -e "${RED}Geen SD card gevonden! Controleer of de SD card erin zit.${NC}"
+        exit 1
+    fi
+
+    echo "Gevonden SD cards:"
+    for i in "${!MMC_DEVICES[@]}"; do
+        SIZE=$(lsblk -d -o SIZE /dev/"${MMC_DEVICES[$i]}" | tail -1 | tr -d ' ')
+        echo "  $((i+1))) /dev/${MMC_DEVICES[$i]} ($SIZE)"
+    done
+
+    if [ ${#MMC_DEVICES[@]} -eq 1 ]; then
+        USB_DEVICE="${MMC_DEVICES[0]}"
+        echo -e "${GREEN}Automatisch geselecteerd: /dev/$USB_DEVICE${NC}"
+    else
+        echo -ne "${YELLOW}Selecteer SD card nummer [1]: ${NC}"
+        read SD_NUM
+        SD_NUM=${SD_NUM:-1}
+        USB_DEVICE="${MMC_DEVICES[$((SD_NUM-1))]}"
+    fi
+
+    echo
+    echo -e "${RED}WARNING: /dev/$USB_DEVICE wordt gewist!${NC}"
+    echo -ne "${YELLOW}Continue? (yes/no) [no]: ${NC}"
+    read CONFIRM
+    if [ "$CONFIRM" != "yes" ]; then
+        echo "Afgebroken."
+        exit 0
+    fi
+
+    echo -e "${GREEN}Stap 1: Armbian image schrijven naar SD card...${NC}"
+    echo -e "${YELLOW}Dit duurt enkele minuten, even geduld...${NC}"
+    sudo dd if="$img_name" of="/dev/$USB_DEVICE" bs=4M status=progress conv=fsync
+    sync
+
+    echo
+    echo -e "${GREEN}═══════════════════════════════════════════════════════════════${NC}"
+    echo -e "${GREEN}  ✅ Armbian succesvol naar SD card geschreven                  ${NC}"
+    echo -e "${GREEN}═══════════════════════════════════════════════════════════════${NC}"
+    echo
+    echo -e "  ${BLUE}Volgende stappen:${NC}"
+    echo -e "  1. SD card uit Linux box, in NanoPi R6S"
+    echo -e "  2. R6S opstarten van SD card"
+    echo -e "  3. SSH naar R6S: ${YELLOW}ssh -t ${UBUNTU_USER}@<ip> 'sudo armbian-install'${NC}"
+    echo -e "  4. Kies optie ${YELLOW}2 — Boot from eMMC - system on eMMC${NC}"
+    echo -e "     (dit kopieert het volledige OS van SD card naar eMMC)"
+    echo -e "  4b. Kies filesystem: ${YELLOW}ext4${NC}"
+    echo -e "  5. Wacht tot installatie klaar is, daarna: SD card eruit, reboot"
+    echo -e "  5. Na reboot van eMMC: firstboot service registreert GitHub runner automatisch"
+    echo -e "  6. GitHub runner verschijnt als \'Idle\' in GitHub Actions settings"
+    echo
+}
+
+#==============================================================================
 # RASPBERRY PI 4 INSTALLATION
 #==============================================================================
 
@@ -2879,9 +3165,10 @@ check_dependencies
 echo -e "${GREEN}Step 1: Select Architecture${NC}"
 echo
 echo "1) x86_64 (Intel/AMD - Lenovo laptop, desktop PC)"
-echo "2) Raspberry Pi 4 (ARM64)"
+echo "2) Raspberry Pi 4 (Ubuntu Pi-specific preinstalled image)"
+echo "3) NanoPi R6S (RK3588S - Armbian, via maskrom)"
 echo
-echo -ne "${YELLOW}Select (1-2) [1]: ${NC}"
+echo -ne "${YELLOW}Select (1-3) [1]: ${NC}"
 read ARCH_CHOICE
 ARCH_CHOICE=${ARCH_CHOICE:-1}
 
@@ -2891,7 +3178,6 @@ case $ARCH_CHOICE in
         ;;
     2)
         ARCH="arm64"
-        # Ask for desktop or server
         echo
         echo "Image type:"
         echo "1) Desktop (GUI, recommended)"
@@ -2905,6 +3191,21 @@ case $ARCH_CHOICE in
             PI4_IMAGE_TYPE="desktop"
         fi
         ;;
+    3)
+        ARCH="arm64-r6s"
+        echo
+        echo "Armbian image variant:"
+        echo "1) Minimal CLI (aanbevolen voor router/server)"
+        echo "2) Desktop (GNOME)"
+        echo -ne "${YELLOW}Select (1-2) [1]: ${NC}"
+        read R6S_IMAGE_TYPE_CHOICE
+        R6S_IMAGE_TYPE_CHOICE=${R6S_IMAGE_TYPE_CHOICE:-1}
+        if [ "$R6S_IMAGE_TYPE_CHOICE" = "2" ]; then
+            R6S_IMAGE_TYPE="gnome"
+        else
+            R6S_IMAGE_TYPE="minimal"
+        fi
+        ;;
     *)
         echo -e "${RED}Invalid choice${NC}"
         exit 1
@@ -2914,55 +3215,76 @@ esac
 echo -e "${GREEN}Selected: $ARCH${NC}"
 echo
 
-# LTS preference
+# LTS preference (not applicable for NanoPi R6S — Armbian handles versioning)
 echo -e "${GREEN}Step 2: Ubuntu Version${NC}"
 echo
-echo "1) LTS (Long Term Support - 5 years)"
-echo "2) Latest (newest features - 9 months)"
-echo -ne "${YELLOW}Select (1-2) [1]: ${NC}"
-read LTS_CHOICE
-LTS_CHOICE=${LTS_CHOICE:-1}
 
-if [ "$LTS_CHOICE" = "2" ]; then
-    LTS_ONLY="no"
+if [ "$ARCH" = "arm64-r6s" ]; then
+    echo "1) LTS (Ubuntu 24.04 Noble - 5 jaar support)"
+    echo "2) Latest (nieuwste Ubuntu via Armbian)"
+    echo -ne "${YELLOW}Select (1-2) [2]: ${NC}"
+    read LTS_CHOICE
+    LTS_CHOICE=${LTS_CHOICE:-2}
+    if [ "$LTS_CHOICE" = "1" ]; then
+        LTS_ONLY="yes"
+        echo -e "${GREEN}Armbian Ubuntu Noble 24.04 LTS${NC}"
+    else
+        LTS_ONLY="no"
+        echo -e "${GREEN}Armbian Ubuntu latest${NC}"
+    fi
+    UBUNTU_VERSION=""
 else
-    LTS_ONLY="yes"
+    echo "1) LTS (Long Term Support - 5 years)"
+    echo "2) Latest (newest features - 9 months)"
+    echo -ne "${YELLOW}Select (1-2) [1]: ${NC}"
+    read LTS_CHOICE
+    LTS_CHOICE=${LTS_CHOICE:-1}
+    if [ "$LTS_CHOICE" = "2" ]; then
+        LTS_ONLY="no"
+    else
+        LTS_ONLY="yes"
+    fi
+    UBUNTU_VERSION=$(get_latest_ubuntu_version "$LTS_ONLY")
+    echo -e "${GREEN}Ubuntu version: $UBUNTU_VERSION${NC}"
 fi
-
-# Get latest version
-UBUNTU_VERSION=$(get_latest_ubuntu_version "$LTS_ONLY")
-echo -e "${GREEN}Ubuntu version: $UBUNTU_VERSION${NC}"
 echo
 
 # Gather configuration
 echo -e "${GREEN}Step 3: Post-Install Configuration${NC}"
 echo
+# Stel device-specifieke defaults in vóór gather_config
+[ "$ARCH" = "arm64-r6s" ] && DEFAULT_HOSTNAME="nanopirouter" || DEFAULT_HOSTNAME="homeassistant"
 gather_config
 
-# WiFi config - needed for both platforms
-gather_wifi_config
+# WiFi config - not needed for NanoPi R6S (wired only, no WiFi chip)
+if [ "$ARCH" != "arm64-r6s" ]; then
+    gather_wifi_config
+fi
 
-# User account - needed for both platforms
+# User account - needed for all platforms
 gather_user_account
 
-# For x86: gather disk selection
+# Platform-specific steps
 if [ "$ARCH" = "x86_64" ]; then
     gather_config_x86_disk_selection
 fi
 
-# Select USB device
-echo
-echo -e "${GREEN}Step 4: Select USB Device${NC}"
-echo
-select_usb_device
+if [ "$ARCH" != "arm64-r6s" ]; then
+    echo
+    echo -e "${GREEN}Step 4: Select USB Device${NC}"
+    echo
+    select_usb_device
+fi
 
-# Create USB based on architecture
+# Create based on architecture
 echo
-echo -e "${GREEN}Step 5: Creating Install USB${NC}"
+echo -e "${GREEN}Step $([ "$ARCH" = "arm64-r6s" ] && echo "4" || echo "5"): Creating Install${NC}"
 echo
 
 if [ "$ARCH" = "x86_64" ]; then
     create_x86_usb "$UBUNTU_VERSION"
+elif [ "$ARCH" = "arm64-r6s" ]; then
+    create_r6s_emmc "$LTS_ONLY" "$R6S_IMAGE_TYPE"
 else
     create_pi4_usb "$UBUNTU_VERSION" "$PI4_IMAGE_TYPE"
 fi
