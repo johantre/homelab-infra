@@ -614,6 +614,13 @@ echo -e "${GREEN}  Post-Install Configuration Script  ${NC}"
 echo -e "${GREEN}======================================${NC}"
 echo
 
+# Skip als we van SD card booten (mmcblk0) — firstboot draait alleen op eMMC (mmcblk1)
+ROOT_DEV=$(findmnt -n -o SOURCE / 2>/dev/null | sed 's/p[0-9]*$//')
+if [[ "$ROOT_DEV" == *"mmcblk0"* ]]; then
+    echo "Running from SD card — skipping firstboot (will run after eMMC install)"
+    exit 0
+fi
+
 if [[ $EUID -ne 0 ]]; then
    echo -e "${RED}Run with sudo!${NC}"
    exit 1
