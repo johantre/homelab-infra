@@ -2282,8 +2282,14 @@ INSTALL_EOF
     sudo ln -sf /etc/systemd/system/firstboot-setup.service \
         "$wants_dir/firstboot-setup.service"
 
+    # GDM (desktop) activeren voor gnome variant — wizard disabled, dus GDM start niet vanzelf
+    if [ "$R6S_IMAGE_TYPE" = "gnome" ]; then
+        sudo ln -sf /lib/systemd/system/gdm.service \
+            "$mount_point/etc/systemd/system/display-manager.service" 2>/dev/null || true
+    fi
+
     echo -e "${GREEN}Firstboot config geïnjecteerd in rootfs${NC}"
-    echo -e "${BLUE}Fixes toegepast: Armbian wizard disabled, home dir ownership, armbian-install script${NC}"
+    echo -e "${BLUE}Fixes: Armbian wizard disabled, keyboard, timezone, locale, groups, GDM${NC}"
 }
 
 create_r6s_emmc() {
