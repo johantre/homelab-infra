@@ -22,17 +22,12 @@
 - name: Configure firewall (nftables)
   ansible.builtin.include_tasks: firewall.yml
 
-- name: Check dnsmasq configuration
-  ansible.builtin.shell: dnsmasq --test --conf-file=/etc/dnsmasq.conf
-  register: dnsmasq_test
-  failed_when: false
-
 - name: Show dnsmasq test output
   debug:
     msg: "{{ dnsmasq_test.stdout }}\n{{ dnsmasq_test.stderr }}"
 
 - name: Check for port conflicts
-  ansible.builtin.shell: netstat -tlnp | grep -E ':53|:67|:68'
+  ansible.builtin.shell: "netstat -tlnp | grep -E ':53|:67|:68'"
   register: port_check
   failed_when: false
 
@@ -42,6 +37,11 @@
 
 - name: Configure DHCP (dnsmasq)
   ansible.builtin.include_tasks: dhcp.yml
+
+- name: Check dnsmasq configuration
+  ansible.builtin.shell: dnsmasq --test --conf-file=/etc/dnsmasq.conf
+  register: dnsmasq_test
+  failed_when: false
 
 - name: Configure WireGuard VPN
   ansible.builtin.include_tasks: wireguard.yml
