@@ -3,15 +3,15 @@
   ansible.builtin.import_tasks: env_boot.yml
   tags: [always]
 
+- name: Gather facts (min)
+  ansible.builtin.setup:
+    gather_subset: ['min']
+
 - name: Set hostname to nanopirouter_hostname
   ansible.builtin.hostname:
     name: "{{ nanopirouter_hostname }}"
   become: true
   when: ansible_hostname != nanopirouter_hostname
-
-- name: Gather facts (min)
-  ansible.builtin.setup:
-    gather_subset: ['min']
 
 - name: Ensure sudoers setup
   ansible.builtin.include_tasks: sudoers.yml
