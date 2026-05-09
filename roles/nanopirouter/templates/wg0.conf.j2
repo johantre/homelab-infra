@@ -1,0 +1,10 @@
+[Interface]
+PrivateKey = {{ wg_server_privkey.content | b64decode | trim }}
+Address = {{ nanopirouter_wg_server_ip }}
+ListenPort = {{ nanopirouter_wg_port }}
+
+# Peers are added here via Ansible or manually
+# Example peer (daughter):
+# [Peer]
+# PublicKey = <peer_public_key>
+# AllowedIPs = 10.8.0.2/32

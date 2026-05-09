@@ -1,0 +1,19 @@
+---
+- name: Install dnsmasq
+  ansible.builtin.apt:
+    name: dnsmasq
+    state: present
+    update_cache: false
+
+- name: Deploy dnsmasq config
+  ansible.builtin.template:
+    src: dnsmasq.conf.j2
+    dest: /etc/dnsmasq.conf
+    mode: "0644"
+  notify: restart dnsmasq
+
+- name: Enable and start dnsmasq
+  ansible.builtin.systemd:
+    name: dnsmasq
+    enabled: true
+    state: started

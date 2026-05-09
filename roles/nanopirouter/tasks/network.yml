@@ -1,0 +1,27 @@
+---
+- name: Enable IP forwarding
+  ansible.builtin.sysctl:
+    name: "{{ item }}"
+    value: "1"
+    state: present
+    sysctl_set: true
+    reload: true
+  loop:
+    - net.ipv4.ip_forward
+    - net.ipv6.conf.all.disable_ipv6
+
+- name: Deploy netplan config for router interfaces
+  ansible.builtin.template:
+    src: netplan-router.yaml.j2
+    dest: /etc/netplan/10-router.yaml
+    mode: "0600"
+  notify: apply netplan
+
+- name: Remove default Armbian netplan config if present
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /etc/netplan/00-default.yaml
+    - /etc/netplan/01-network-manager-all.yaml
+  notify: apply netplan

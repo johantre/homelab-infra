@@ -1,0 +1,42 @@
+# dnsmasq config — NanoPi Router
+# Manages DHCP for LAN (.3.0/24) and Modbus (.4.0/24)
+
+# Listen on internal interfaces only
+interface={{ nanopirouter_lan_interface }}
+interface={{ nanopirouter_modbus_interface }}
+bind-interfaces
+
+# DNS upstream → PiHole
+server={{ nanopirouter_dns_server }}
+no-resolv
+
+# Lokale domeinnaam
+domain=local
+local=/local/
+
+# ============================================================
+# LAN DHCP (192.168.3.0/24)
+# ============================================================
+dhcp-range={{ nanopirouter_lan_interface }},{{ nanopirouter_lan_dhcp_start }},{{ nanopirouter_lan_dhcp_end }},{{ nanopirouter_lan_dhcp_lease }}
+dhcp-option={{ nanopirouter_lan_interface }},3,{{ nanopirouter_lan_ip }}      # gateway
+dhcp-option={{ nanopirouter_lan_interface }},6,{{ nanopirouter_dns_server }}  # DNS → PiHole
+
+# DHCP reservations LAN
+{% for host in nanopirouter_dhcp_reservations %}
+dhcp-host={{ host.mac }},{{ host.ip }},{{ host.name }}
+{% endfor %}
+
+# ============================================================
+# MODBUS DHCP (192.168.4.0/24)
+# ============================================================
+dhcp-range={{ nanopirouter_modbus_interface }},{{ nanopirouter_modbus_dhcp_start }},{{ nanopirouter_modbus_dhcp_end }},12h
+dhcp-option={{ nanopirouter_modbus_interface }},3,{{ nanopirouter_modbus_ip }}  # gateway
+dhcp-option={{ nanopirouter_modbus_interface }},6,{{ nanopirouter_modbus_ip }}  # DNS → router itself (no PiHole for Modbus segment)
+
+# Fixed IPs Modbus devices
+{% for host in nanopirouter_modbus_hosts %}
+dhcp-host={{ host.mac }},{{ host.ip }},{{ host.name }}
+{% endfor %}
+
+# Logging
+log-dhcp

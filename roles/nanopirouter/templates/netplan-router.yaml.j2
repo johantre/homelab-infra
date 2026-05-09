@@ -1,0 +1,15 @@
+network:
+  version: 2
+  renderer: networkd
+  ethernets:
+    {{ nanopirouter_wan_interface }}:
+      dhcp4: true
+      dhcp6: false
+    {{ nanopirouter_lan_interface }}:
+      dhcp4: false
+      addresses:
+        - {{ nanopirouter_lan_ip }}/24
+    {{ nanopirouter_modbus_interface }}:
+      dhcp4: false
+      addresses:
+        - {{ nanopirouter_modbus_ip }}/24

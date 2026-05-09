@@ -1,0 +1,14 @@
+- name: Check if NOPASSWD sudoers file exists
+  ansible.builtin.stat:
+    path: "/etc/sudoers.d/99-{{ ansible_user }}-nopasswd"
+  register: _sudoers_file
+
+- name: Install passwordless sudo for {{ ansible_user }} (target only)
+  become: true
+  ansible.builtin.copy:
+    dest: "/etc/sudoers.d/99-{{ ansible_user }}-nopasswd"
+    mode: "0440"
+    validate: "visudo -cf %s"
+    backup: true
+    content: |
+      {{ ansible_user }} ALL=(ALL) NOPASSWD:ALL

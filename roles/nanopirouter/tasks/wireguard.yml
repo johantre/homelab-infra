@@ -1,0 +1,43 @@
+---
+- name: Install WireGuard
+  ansible.builtin.apt:
+    name: wireguard
+    state: present
+    update_cache: false
+
+- name: Ensure WireGuard config directory exists
+  ansible.builtin.file:
+    path: /etc/wireguard
+    state: directory
+    mode: "0700"
+
+- name: Generate WireGuard server private key (if not exists)
+  ansible.builtin.shell: |
+    wg genkey > /etc/wireguard/server_private.key
+    chmod 600 /etc/wireguard/server_private.key
+  args:
+    creates: /etc/wireguard/server_private.key
+
+- name: Read WireGuard server private key
+  ansible.builtin.slurp:
+    src: /etc/wireguard/server_private.key
+  register: wg_server_privkey
+
+- name: Generate WireGuard server public key
+  ansible.builtin.shell: |
+    wg pubkey < /etc/wireguard/server_private.key > /etc/wireguard/server_public.key
+  args:
+    creates: /etc/wireguard/server_public.key
+
+- name: Deploy WireGuard server config
+  ansible.builtin.template:
+    src: wg0.conf.j2
+    dest: /etc/wireguard/wg0.conf
+    mode: "0600"
+  notify: restart wireguard
+
+- name: Enable and start WireGuard
+  ansible.builtin.systemd:
+    name: "wg-quick@{{ nanopirouter_wg_interface }}"
+    enabled: true
+    state: started

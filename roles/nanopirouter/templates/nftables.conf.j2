@@ -1,0 +1,100 @@
+#!/usr/sbin/nft -f
+
+flush ruleset
+
+define WAN    = {{ nanopirouter_wan_interface }}
+define LAN    = {{ nanopirouter_lan_interface }}
+define MODBUS = {{ nanopirouter_modbus_interface }}
+define LAN_NET    = {{ nanopirouter_lan_network }}
+define MODBUS_NET = {{ nanopirouter_modbus_network }}
+define WG_NET     = {{ nanopirouter_wg_subnet }}
+
+# Whitelist: sources allowed to reach the Modbus segment
+define MODBUS_WHITELIST = {
+{% for ip in nanopirouter_modbus_whitelist %}
+    {{ ip }}{% if not loop.last %},{% endif %}
+
+{% endfor %}
+}
+
+table inet filter {
+
+    chain input {
+        type filter hook input priority 0; policy drop;
+
+        # Established/related
+        ct state established,related accept
+
+        # Loopback
+        iif lo accept
+
+        # ICMP
+        ip protocol icmp accept
+
+        # LAN always allowed to reach router (DNS, DHCP, SSH)
+        iifname $LAN accept
+
+        # Modbus segment allowed to reach router (DNS, DHCP)
+        iifname $MODBUS ip protocol { tcp, udp } th dport { 53, 67 } accept
+
+        # WireGuard
+        iifname $WAN udp dport {{ nanopirouter_wg_port }} accept
+
+        # SSH van LAN (beheertoegang)
+        iifname $LAN tcp dport 22 accept
+
+        # Drop al het rest (incl. WAN → router)
+        drop
+    }
+
+    chain forward {
+        type filter hook forward priority 0; policy drop;
+
+        # Established/related always allowed
+        ct state established,related accept
+
+        # LAN → WAN (internet access)
+        iifname $LAN oifname $WAN accept
+
+        # Modbus → WAN (omvormer cloud connectie)
+        iifname $MODBUS oifname $WAN accept
+
+        # WireGuard clients → LAN en Modbus
+        iifname {{ nanopirouter_wg_interface }} oifname { $LAN, $MODBUS } accept
+
+        # Whitelist → Modbus segment (specific sources only)
+{% for ip in nanopirouter_modbus_whitelist %}
+        iifname $LAN ip saddr {{ ip }} oifname $MODBUS accept
+{% endfor %}
+
+        # WireGuard clients → Modbus
+        iifname {{ nanopirouter_wg_interface }} oifname $MODBUS accept
+
+        # Everything not explicitly allowed: drop
+        drop
+    }
+
+    chain output {
+        type filter hook output priority 0; policy accept;
+    }
+}
+
+table ip nat {
+
+    chain prerouting {
+        type nat hook prerouting priority -100;
+    }
+
+    chain postrouting {
+        type nat hook postrouting priority 100;
+
+        # NAT for LAN → internet
+        oifname $WAN ip saddr $LAN_NET masquerade
+
+        # NAT for Modbus → internet (inverter cloud connectivity)
+        oifname $WAN ip saddr $MODBUS_NET masquerade
+
+        # NAT for WireGuard clients → internet
+        oifname $WAN ip saddr $WG_NET masquerade
+    }
+}

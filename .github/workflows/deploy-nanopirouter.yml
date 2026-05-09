@@ -1,0 +1,111 @@
+name: Deploy NanoPi Router
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: false
+        default: 'prod'
+        type: choice
+        options:
+          - prod
+          - dev
+
+jobs:
+  deploy-nanopirouter:
+    runs-on: ${{ fromJSON(format('["self-hosted","nanopirouter","{0}"]', inputs.environment || 'prod')) }}
+
+    steps:
+      - name: Checkout infra repository
+        uses: actions/checkout@v4
+        with:
+          clean: true
+          fetch-depth: 1
+
+      - name: Remove legacy homelab clones
+        run: |
+          if [[ -d ~/homelab/infra ]]; then
+            rm -rf ~/homelab/infra
+            echo "Removed legacy ~/homelab/infra"
+          fi
+          if [[ -d ~/homelab/config ]]; then
+            rm -rf ~/homelab/config
+            echo "Removed legacy ~/homelab/config"
+          fi
+
+      - name: Checkout config repository
+        uses: actions/checkout@v4
+        with:
+          repository: johantre/homelab-config
+          token: ${{ secrets.GH_PAT }}
+          fetch-depth: 1
+          path: config-repo
+
+      - name: Verify all secrets are present
+        run: |
+          MISSING=()
+          [[ -z "${{ secrets.GH_USERNAME }}" ]] && MISSING+=("GH_USERNAME")
+          [[ -z "${{ secrets.GH_PAT }}" ]] && MISSING+=("GH_PAT")
+          [[ -z "${{ secrets.SSH_PRIV_KEY_B64 }}" ]] && MISSING+=("SSH_PRIV_KEY_B64")
+          if [[ ${#MISSING[@]} -gt 0 ]]; then
+            echo "❌ Missing secrets: ${MISSING[*]}"
+            exit 1
+          fi
+          echo "✅ All secrets present"
+
+      - name: Ensure Ansible is installed
+        run: |
+          if ! command -v ansible-playbook &>/dev/null; then
+            sudo apt-get update -qq
+            sudo apt-get install -y ansible
+          fi
+          echo "✅ Ansible: $(ansible-playbook --version | head -n1)"
+
+      - name: Deploy NanoPi Router with Ansible
+        env:
+          GH_USERNAME: ${{ secrets.GH_USERNAME }}
+          GH_PAT: ${{ secrets.GH_PAT }}
+          SSH_PRIV_KEY_B64: ${{ secrets.SSH_PRIV_KEY_B64 }}
+        run: |
+          cd $GITHUB_WORKSPACE
+          set -e
+          set -o pipefail
+
+          ansible-playbook \
+            -i inventories/nanopirouter_target_local.ini \
+            deploy-nanopirouter.yml \
+            -e config_repo_path=$GITHUB_WORKSPACE/config-repo \
+            -vv \
+            2>&1 | tee ansible-deploy-nanopirouter.log
+
+          ANSIBLE_EXIT_CODE=${PIPESTATUS[0]}
+          if [[ ${ANSIBLE_EXIT_CODE} -ne 0 ]]; then
+            echo "❌ Ansible deployment FAILED!"
+            tail -n 50 ansible-deploy-nanopirouter.log
+            exit 1
+          fi
+          echo "✅ Deployment completed!"
+
+      - name: Deployment Summary
+        if: always()
+        run: |
+          echo "======================================"
+          echo "📊 NANOPI ROUTER DEPLOYMENT SUMMARY"
+          echo "======================================"
+          echo "LAN gateway: 192.168.3.1"
+          echo "Modbus gateway: 192.168.4.1"
+          if [[ "${{ job.status }}" == "success" ]]; then
+            echo "✅ DEPLOYMENT SUCCESSFUL!"
+          else
+            echo "❌ DEPLOYMENT FAILED"
+          fi
+          echo "======================================"
+
+      - name: Upload Ansible logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ansible-deploy-nanopirouter-log
+          path: ${{ github.workspace }}/ansible-deploy-nanopirouter.log
+          retention-days: 7

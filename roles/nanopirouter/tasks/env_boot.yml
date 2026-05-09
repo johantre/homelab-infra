@@ -1,0 +1,42 @@
+---
+- name: Resolve variables from .env when provided
+  no_log: true
+  ansible.builtin.set_fact:
+    gh_username: "{{ gh_username | default(lookup('ini', 'GH_USERNAME file=' + env_file + ' type=properties'), true) }}"
+    gh_pat:      "{{ gh_pat      | default(lookup('ini', 'GH_PAT file=' + env_file + ' type=properties'), true) }}"
+    config_repo_path: "{{ config_repo_path | default(lookup('ini', 'CONFIG_REPO_PATH file=' + env_file + ' type=properties'), true) }}"
+  when: env_file is defined
+
+- name: Resolve variables from OS env when no env_file
+  no_log: true
+  ansible.builtin.set_fact:
+    gh_username: "{{ gh_username | default(lookup('env','GH_USERNAME'), true) }}"
+    gh_pat:      "{{ gh_pat      | default(lookup('env','GH_PAT'), true) }}"
+    config_repo_path: "{{ config_repo_path | default(lookup('env','CONFIG_REPO_PATH'), true) }}"
+  when: env_file is not defined
+
+- name: Assert GitHub tokens present
+  no_log: true
+  ansible.builtin.assert:
+    that:
+      - gh_username | length > 0
+      - gh_pat | length > 0
+    fail_msg: "❌ Missing GH_USERNAME or GH_PAT. ❌"
+
+- name: Assert config_repo_path is set
+  ansible.builtin.assert:
+    that:
+      - config_repo_path is defined
+      - config_repo_path | length > 0
+    fail_msg: "❌ Missing config_repo_path. Pass -e config_repo_path=... or set CONFIG_REPO_PATH in env_file. ❌"
+
+- name: Validate critical router variables
+  ansible.builtin.assert:
+    that:
+      - nanopirouter_wan_interface is defined
+      - nanopirouter_lan_interface is defined
+      - nanopirouter_modbus_interface is defined
+      - nanopirouter_lan_ip is defined
+      - nanopirouter_modbus_ip is defined
+      - nanopirouter_dns_server is defined
+    fail_msg: "❌ Missing router network variables in group_vars/all.yml ❌"

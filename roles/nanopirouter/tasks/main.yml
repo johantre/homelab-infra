@@ -1,0 +1,44 @@
+---
+- name: Bootstrap env (resolve and validate variables)
+  ansible.builtin.import_tasks: env_boot.yml
+  tags: [always]
+
+- name: Set hostname to nanopirouter_hostname
+  ansible.builtin.hostname:
+    name: "{{ nanopirouter_hostname }}"
+  become: true
+  when: ansible_hostname != nanopirouter_hostname
+
+- name: Gather facts (min)
+  ansible.builtin.setup:
+    gather_subset: ['min']
+
+- name: Ensure sudoers setup
+  ansible.builtin.include_tasks: sudoers.yml
+
+- name: Configure network interfaces
+  ansible.builtin.include_tasks: network.yml
+
+- name: Configure firewall (nftables)
+  ansible.builtin.include_tasks: firewall.yml
+
+- name: Configure DHCP (dnsmasq)
+  ansible.builtin.include_tasks: dhcp.yml
+
+- name: Configure WireGuard VPN
+  ansible.builtin.include_tasks: wireguard.yml
+
+- name: OS updates (opt-in via tags)
+  include_tasks:
+    file: os-update.yml
+    apply:
+      tags: [os_update]
+  tags: [os_update, never]
+
+- name: Router deployment summary
+  ansible.builtin.debug:
+    msg: >-
+      ✅ NanoPi router configured:
+      LAN={{ nanopirouter_lan_ip }}/24,
+      Modbus={{ nanopirouter_modbus_ip }}/24,
+      WireGuard={{ nanopirouter_wg_port }}/udp

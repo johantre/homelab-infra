@@ -1,0 +1,7 @@
+---
+- name: Deploy NanoPi Router
+  hosts: nanopirouter
+  gather_facts: false
+  become: true
+  roles:
+    - nanopirouter
