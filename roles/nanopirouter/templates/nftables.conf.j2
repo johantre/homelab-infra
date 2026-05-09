@@ -40,8 +40,8 @@ table inet filter {
         # WireGuard
         iifname $WAN udp dport {{ nanopirouter_wg_port }} accept
 
-        # SSH van LAN (beheertoegang)
-        iifname $LAN tcp dport 22 accept
+        # SSH management access (all interfaces — restrict to LAN only after cutover)
+        tcp dport 22 accept
 
         # Drop al het rest (incl. WAN → router)
         drop
