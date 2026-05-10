@@ -4,7 +4,8 @@
 # Listen on internal interfaces only
 interface={{ nanopirouter_lan_interface }}
 interface={{ nanopirouter_modbus_interface }}
-bind-interfaces
+bind-dynamic
+except-interface={{ nanopirouter_wan_interface }}
 except-interface=lo
 
 # DNS upstream → PiHole
