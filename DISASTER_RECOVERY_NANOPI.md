@@ -35,6 +35,7 @@ De herbouw vereist internet (Armbian download, runner registratie).
 - [ ] Internet (via modem direct of mobiel hotspot)
 - [ ] GitHub toegang (voor runner registratie)
 - [ ] SD kaart procedure draait op: `johan-Kaisa` (de Linux laptop)
+- [ ] **Geen devices op lan1/lan2 tijdens firstboot** — de NanoPi draait vanilla Armbian, er is nog geen DHCP. Clients die een IP proberen te krijgen falen met "Activation of network connection failed". Trek ethernet kabels op lan1/lan2 uit tot na de deploy.
 
 ### Stap 1 — SD kaart aanmaken
 
