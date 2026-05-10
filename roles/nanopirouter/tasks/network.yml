@@ -48,14 +48,13 @@
   changed_when: true
   when: netplan_config is changed or netplan_default_removed is changed
 
-- name: Ensure LAN interface is up with correct IP
-  ansible.builtin.shell: |
-    ip link set {{ nanopirouter_lan_interface }} up
-    ip addr show {{ nanopirouter_lan_interface }} | grep -q '{{ nanopirouter_lan_ip }}' || \
-      ip addr add {{ nanopirouter_lan_ip }}/24 dev {{ nanopirouter_lan_interface }}
+- name: Check if LAN interface has carrier
+  ansible.builtin.shell: cat /sys/class/net/{{ nanopirouter_lan_interface }}/carrier 2>/dev/null || echo 0
+  register: lan_carrier
   changed_when: false
 
-- name: Verify LAN interface has IP address
+- name: Verify LAN interface has IP address (alleen als carrier aanwezig)
   ansible.builtin.shell: ip addr show {{ nanopirouter_lan_interface }} | grep -q 'inet '
   changed_when: false
+  when: lan_carrier.stdout == "1"
 
