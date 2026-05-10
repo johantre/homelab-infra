@@ -87,18 +87,56 @@ jobs:
           fi
           echo "✅ Deployment completed!"
 
+      - name: Functional verification
+        if: success()
+        run: |
+          pass=0; fail=0
+          check() {
+            local desc="$1"; shift
+            if "$@" &>/dev/null 2>&1; then
+              echo "  PASS  $desc"
+              pass=$((pass + 1))
+            else
+              echo "  FAIL  $desc"
+              fail=$((fail + 1))
+            fi
+          }
+
+          echo "--- Network ---"
+          check "LAN interface has IP (lan1)"      ip addr show lan1
+          check "Default route via WAN present"    ip route show default
+          check "Internet reachable (8.8.8.8)"     ping -c 2 -W 2 8.8.8.8
+
+          echo "--- Firewall ---"
+          check "nftables service active"          systemctl is-active nftables
+          check "NAT postrouting rules present"    sudo nft list chain ip nat postrouting
+          check "SSH allowed in input chain"       bash -c "sudo nft list chain inet filter input | grep -q 'dport 22'"
+
+          echo "--- DHCP/DNS ---"
+          check "dnsmasq service active"           systemctl is-active dnsmasq
+          check "dnsmasq listening on DNS  (:53)"  bash -c "ss -ulnp | grep -q ':53'"
+          check "dnsmasq listening on DHCP (:67)"  bash -c "ss -ulnp | grep -q ':67'"
+          check "DNS resolves via PiHole"          dig @192.168.3.11 google.com +short
+
+          echo "--- WireGuard ---"
+          check "WireGuard interface active"       sudo wg show wg0
+          check "WireGuard route present (wg0)"    ip route show 10.8.0.0/24
+
+          echo ""
+          echo "Verification: $pass passed, $fail failed"
+
       - name: Deployment Summary
         if: always()
         run: |
           echo "======================================"
-          echo "📊 NANOPI ROUTER DEPLOYMENT SUMMARY"
+          echo "NANOPI ROUTER DEPLOYMENT SUMMARY"
           echo "======================================"
-          echo "LAN gateway: 192.168.3.1"
-          echo "Modbus gateway: 192.168.4.1"
+          echo "LAN gateway (test): 192.168.5.1"
+          echo "Modbus gateway:     192.168.4.1"
           if [[ "${{ job.status }}" == "success" ]]; then
-            echo "✅ DEPLOYMENT SUCCESSFUL!"
+            echo "DEPLOYMENT SUCCESSFUL"
           else
-            echo "❌ DEPLOYMENT FAILED"
+            echo "DEPLOYMENT FAILED"
           fi
           echo "======================================"
 

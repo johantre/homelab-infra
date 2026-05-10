@@ -1,0 +1,7 @@
+---
+- name: Install router utility packages
+  ansible.builtin.apt:
+    name:
+      - bind9-dnsutils
+    state: present
+    update_cache: false
