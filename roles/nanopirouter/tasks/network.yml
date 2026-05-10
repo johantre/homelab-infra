@@ -48,16 +48,14 @@
   changed_when: true
   when: netplan_config is changed or netplan_default_removed is changed
 
-- name: Force NetworkManager to activate LAN interface
-  ansible.builtin.command: nmcli device connect {{ nanopirouter_lan_interface }}
+- name: Ensure LAN interface is up with correct IP
+  ansible.builtin.shell: |
+    ip link set {{ nanopirouter_lan_interface }} up
+    ip addr show {{ nanopirouter_lan_interface }} | grep -q '{{ nanopirouter_lan_ip }}' || \
+      ip addr add {{ nanopirouter_lan_ip }}/24 dev {{ nanopirouter_lan_interface }}
   changed_when: false
-  failed_when: false
 
 - name: Verify LAN interface has IP address
   ansible.builtin.shell: ip addr show {{ nanopirouter_lan_interface }} | grep -q 'inet '
   changed_when: false
-  register: lan_ip_check
-  retries: 10
-  delay: 3
-  until: lan_ip_check.rc == 0
 
