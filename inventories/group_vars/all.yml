@@ -125,6 +125,18 @@ nanopirouter_dhcp_reservations:
   - name: nas
     mac: "00:11:32:98:1b:51"
     ip: "192.168.3.38"
+  - name: orbi
+    mac: "34:98:b5:43:8a:2f"
+    ip: "192.168.3.2"
+  - name: orbi-laundry
+    mac: "34:98:b5:46:33:4d"
+    ip: "192.168.3.3"
+  - name: orbi-bedroom
+    mac: "6c:cd:d6:29:b9:ce"
+    ip: "192.168.3.4"
+  - name: orbi-kitchen
+    mac: "34:98:b5:46:33:a9"
+    ip: "192.168.3.5"
 
 # Vaste IPs Modbus segment (MAC nodig voor dnsmasq reservatie)
 nanopirouter_modbus_hosts:
