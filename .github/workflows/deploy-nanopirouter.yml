@@ -132,7 +132,7 @@ jobs:
           echo "======================================"
           echo "NANOPI ROUTER DEPLOYMENT SUMMARY"
           echo "======================================"
-          echo "LAN gateway (test): 192.168.5.1"
+          echo "LAN gateway: 192.168.3.1"
           echo "Modbus gateway:     192.168.4.1"
           if [[ "${{ job.status }}" == "success" ]]; then
             echo "DEPLOYMENT SUCCESSFUL"
