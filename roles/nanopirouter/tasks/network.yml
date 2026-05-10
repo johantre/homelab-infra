@@ -1,4 +1,10 @@
 ---
+- name: Ensure NetworkManager is running (netplan renderer)
+  ansible.builtin.systemd:
+    name: NetworkManager
+    enabled: true
+    state: started
+
 - name: Enable IP forwarding
   ansible.builtin.sysctl:
     name: "{{ item }}"
