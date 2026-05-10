@@ -60,6 +60,17 @@ Het script:
    - `setup-machine.sh` registreert GitHub Actions runner
 3. Wacht tot runner online is in GitHub → Settings → Actions → Runners → `nanopirouter`
 
+**Voortgang volgen via SSH** — geen haast, journalctl bewaart alle logs:
+```bash
+# Vind het NanoPi IP (check ook Orbi attached devices)
+nmap -sn 192.168.3.0/24
+
+# SSH erin en bekijk de volledige firstboot log (ook achteraf)
+ssh ubuntu@<ip>
+journalctl -u firstboot-setup.service --no-pager
+```
+Scroll naar het einde voor de setup summary en de self-destruct sequentie (`SELF-DESTRUCT SEQUENCE INITIATED`) die alle gevoelige bestanden uit `/opt/firstboot/` verwijdert.
+
 ### Stap 3 — Deploy triggeren
 
 Zelfde als Scenario A: GitHub Actions → **Deploy NanoPi Router** → Run workflow.
