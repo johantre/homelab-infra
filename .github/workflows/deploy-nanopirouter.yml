@@ -94,10 +94,10 @@ jobs:
           check() {
             local desc="$1"; shift
             if "$@" &>/dev/null 2>&1; then
-              echo "  PASS  $desc"
+              echo "  ✅  $desc"
               pass=$((pass + 1))
             else
-              echo "  FAIL  $desc"
+              echo "  ❌  $desc"
               fail=$((fail + 1))
             fi
           }
