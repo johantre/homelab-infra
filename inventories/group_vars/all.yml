@@ -79,10 +79,11 @@ nanopirouter_lan_interface: "lan1"
 nanopirouter_modbus_interface: "lan2"
 
 # LAN (main network)
-nanopirouter_lan_ip: "192.168.3.1"
-nanopirouter_lan_network: "192.168.3.0/24"
-nanopirouter_lan_dhcp_start: "192.168.3.100"
-nanopirouter_lan_dhcp_end: "192.168.3.200"
+# DR-TEST: tijdelijk .5.x — na test terug naar .3.x voor cutover
+nanopirouter_lan_ip: "192.168.5.1"
+nanopirouter_lan_network: "192.168.5.0/24"
+nanopirouter_lan_dhcp_start: "192.168.5.100"
+nanopirouter_lan_dhcp_end: "192.168.5.200"
 nanopirouter_lan_dhcp_lease: "24h"
 
 # Modbus segment
