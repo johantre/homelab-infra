@@ -38,5 +38,29 @@
       - nanopirouter_modbus_interface is defined
       - nanopirouter_lan_ip is defined
       - nanopirouter_modbus_ip is defined
+      - nanopirouter_lan_network is defined
+      - nanopirouter_modbus_network is defined
       - nanopirouter_dns_server is defined
-    fail_msg: "❌ Missing router network variables in group_vars/all.yml ❌"
+    fail_msg: "Missing router network variables in group_vars/all.yml"
+
+- name: Assert LAN and Modbus subnets do not overlap
+  ansible.builtin.assert:
+    that:
+      - nanopirouter_lan_network != nanopirouter_modbus_network
+    fail_msg: "LAN and Modbus subnets are identical ({{ nanopirouter_lan_network }}). Fix group_vars/all.yml."
+
+- name: Get current WAN interface subnet prefix
+  ansible.builtin.shell: |
+    ip -4 addr show {{ nanopirouter_wan_interface }} 2>/dev/null \
+      | grep -oP '(?<=inet )\d+\.\d+\.\d+' | head -1 || echo ""
+  register: wan_subnet_prefix
+  changed_when: false
+
+- name: Assert LAN subnet does not conflict with WAN
+  ansible.builtin.assert:
+    that:
+      - "wan_subnet_prefix.stdout == '' or not nanopirouter_lan_network.startswith(wan_subnet_prefix.stdout)"
+    fail_msg: >-
+      LAN {{ nanopirouter_lan_network }} conflicts with WAN's current subnet
+      {{ wan_subnet_prefix.stdout }}.0/24 on {{ nanopirouter_wan_interface }}.
+      Update nanopirouter_lan_network in group_vars/all.yml before deploying.

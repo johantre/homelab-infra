@@ -10,10 +10,28 @@
     src: dnsmasq.conf.j2
     dest: /etc/dnsmasq.conf
     mode: "0644"
-  notify: restart dnsmasq
+  register: dnsmasq_config
+
+- name: Validate dnsmasq config syntax
+  ansible.builtin.shell: dnsmasq --test --conf-file=/etc/dnsmasq.conf
+  changed_when: false
 
 - name: Enable and start dnsmasq
   ansible.builtin.systemd:
     name: dnsmasq
     enabled: true
     state: started
+
+- name: Restart dnsmasq if config changed
+  ansible.builtin.systemd:
+    name: dnsmasq
+    state: restarted
+  when: dnsmasq_config is changed
+
+- name: Verify dnsmasq is active
+  ansible.builtin.command: systemctl is-active dnsmasq
+  changed_when: false
+
+- name: Verify dnsmasq is listening on DNS port
+  ansible.builtin.shell: ss -ulnp | grep -q ':53'
+  changed_when: false

@@ -1,7 +1,21 @@
 ---
-- name: Ensure NetworkManager is running (netplan renderer)
+- name: Detect NetworkManager service name
+  ansible.builtin.shell: |
+    systemctl list-unit-files --type=service --no-legend \
+      | awk '{print $1}' \
+      | grep -Ei '^(NetworkManager|network-manager)\.service$' \
+      | head -1 | sed 's/\.service//'
+  register: nm_service_name_result
+  changed_when: false
+  failed_when: nm_service_name_result.stdout | length == 0
+
+- name: Set NetworkManager service name fact
+  ansible.builtin.set_fact:
+    nm_service_name: "{{ nm_service_name_result.stdout }}"
+
+- name: Ensure NetworkManager is running
   ansible.builtin.systemd:
-    name: NetworkManager
+    name: "{{ nm_service_name }}"
     enabled: true
     state: started
 
@@ -21,13 +35,31 @@
     src: netplan-router.yaml.j2
     dest: /etc/netplan/10-router.yaml
     mode: "0600"
-  notify: apply netplan
+  register: netplan_config
 
 - name: Remove default Armbian netplan config if present
   ansible.builtin.file:
-    path: "{{ item }}"
+    path: /etc/netplan/00-default.yaml
     state: absent
-  loop:
-    - /etc/netplan/00-default.yaml
-    - /etc/netplan/01-network-manager-all.yaml
-  notify: apply netplan
+  register: netplan_default_removed
+
+- name: Apply netplan if config changed
+  ansible.builtin.command: netplan apply
+  changed_when: true
+  when: netplan_config is changed or netplan_default_removed is changed
+
+- name: Verify LAN interface has IP address
+  ansible.builtin.shell: ip addr show {{ nanopirouter_lan_interface }} | grep -q 'inet '
+  changed_when: false
+  register: lan_ip_check
+  retries: 5
+  delay: 2
+  until: lan_ip_check.rc == 0
+
+- name: Verify Modbus interface has IP address
+  ansible.builtin.shell: ip addr show {{ nanopirouter_modbus_interface }} | grep -q 'inet '
+  changed_when: false
+  register: modbus_ip_check
+  retries: 5
+  delay: 2
+  until: modbus_ip_check.rc == 0

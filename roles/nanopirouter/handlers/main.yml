@@ -1,18 +1,4 @@
 ---
-- name: apply netplan
-  ansible.builtin.command: netplan apply
-  changed_when: true
-
-- name: reload nftables
-  ansible.builtin.systemd:
-    name: nftables
-    state: restarted
-
-- name: restart dnsmasq
-  ansible.builtin.systemd:
-    name: dnsmasq
-    state: restarted
-
 - name: restart wireguard
   ansible.builtin.systemd:
     name: "wg-quick@{{ nanopirouter_wg_interface }}"

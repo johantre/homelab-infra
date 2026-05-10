@@ -10,10 +10,24 @@
     src: nftables.conf.j2
     dest: /etc/nftables.conf
     mode: "0640"
-  notify: reload nftables
+  register: nftables_config
+
+- name: Validate nftables config syntax
+  ansible.builtin.command: nft -c -f /etc/nftables.conf
+  changed_when: false
 
 - name: Enable and start nftables
   ansible.builtin.systemd:
     name: nftables
     enabled: true
     state: started
+
+- name: Reload nftables if config changed
+  ansible.builtin.systemd:
+    name: nftables
+    state: restarted
+  when: nftables_config is changed
+
+- name: Verify SSH is allowed in active nftables rules
+  ansible.builtin.shell: nft list chain inet filter input | grep -q 'dport 22'
+  changed_when: false

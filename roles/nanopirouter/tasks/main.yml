@@ -3,11 +3,11 @@
   ansible.builtin.import_tasks: env_boot.yml
   tags: [always]
 
-- name: Gather facts (min)
+- name: Gather facts
   ansible.builtin.setup:
     gather_subset: ['min']
 
-- name: Set hostname to nanopirouter_hostname
+- name: Set hostname
   ansible.builtin.hostname:
     name: "{{ nanopirouter_hostname }}"
   become: true
@@ -22,27 +22,8 @@
 - name: Configure firewall (nftables)
   ansible.builtin.include_tasks: firewall.yml
 
-- name: Configure DHCP (dnsmasq)
+- name: Configure DHCP/DNS (dnsmasq)
   ansible.builtin.include_tasks: dhcp.yml
-
-- name: Check dnsmasq configuration
-  ansible.builtin.shell: dnsmasq --test --conf-file=/etc/dnsmasq.conf
-  register: dnsmasq_test
-  failed_when: false
-
-- name: Show dnsmasq test output
-  debug:
-    msg: "{{ dnsmasq_test.stdout }}\n{{ dnsmasq_test.stderr }}"
-
-- name: Check for port conflicts
-  ansible.builtin.shell: "netstat -tlnp | grep -E ':53|:67|:68' || true"
-  register: port_check
-  changed_when: false
-  failed_when: false
-
-- name: Show port status
-  debug:
-    msg: "{{ port_check.stdout }}"
 
 - name: Configure WireGuard VPN
   ansible.builtin.include_tasks: wireguard.yml
@@ -57,7 +38,7 @@
 - name: Router deployment summary
   ansible.builtin.debug:
     msg: >-
-      ✅ NanoPi router configured:
+      NanoPi router configured:
       LAN={{ nanopirouter_lan_ip }}/24,
       Modbus={{ nanopirouter_modbus_ip }}/24,
       WireGuard={{ nanopirouter_wg_port }}/udp
