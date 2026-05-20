@@ -3,7 +3,7 @@
   ansible.builtin.apt:
     name: avahi-daemon
     state: present
-    update_cache: false
+    update_cache: true
 
 - name: Configure avahi-daemon (mDNS reflector lan1 ↔ lan2)
   ansible.builtin.template:
