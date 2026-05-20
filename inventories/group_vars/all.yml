@@ -137,12 +137,7 @@ nanopirouter_dhcp_reservations:
     ip: "192.168.3.5"
 
 # Vaste IPs Modbus segment (MAC nodig voor dnsmasq reservatie)
-nanopirouter_dantherm_discovery_ip: "192.168.4.2"
-
 nanopirouter_modbus_hosts:
-  - name: dantherm
-    mac: "00:25:6f:80:04:ca"
-    ip: "192.168.4.2"
   - name: omvormer-wired
     mac: "2c:bc:bb:5d:0b:f3"
     ip: "192.168.4.3"
