@@ -18,3 +18,21 @@
   ansible.builtin.file:
     path: /usr/local/bin/dantherm-relay.py
     state: absent
+
+- name: Stop en disable avahi-daemon (deprecated)
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    state: stopped
+    enabled: false
+  loop:
+    - avahi-daemon.service
+    - avahi-daemon.socket
+  failed_when: false
+
+- name: Verwijder avahi-daemon package (deprecated)
+  ansible.builtin.apt:
+    name:
+      - avahi-daemon
+      - libavahi-core7
+    state: absent
+    purge: true
