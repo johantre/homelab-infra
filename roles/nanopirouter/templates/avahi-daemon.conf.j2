@@ -1,0 +1,17 @@
+[server]
+host-name={{ nanopirouter_hostname }}
+domain-name=local
+allow-interfaces={{ nanopirouter_lan_interface }},{{ nanopirouter_modbus_interface }}
+use-ipv6=no
+
+[wide-area]
+enable-wide-area=no
+
+[publish]
+publish-hinfo=no
+publish-workstation=no
+
+[reflector]
+enable-reflector=yes
+
+[rlimits]

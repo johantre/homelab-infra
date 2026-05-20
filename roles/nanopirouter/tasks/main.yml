@@ -31,6 +31,9 @@
 - name: Configure WireGuard VPN
   ansible.builtin.include_tasks: wireguard.yml
 
+- name: Configure mDNS reflector (avahi)
+  ansible.builtin.include_tasks: avahi.yml
+
 - name: OS updates (opt-in via tags)
   include_tasks:
     file: os-update.yml
