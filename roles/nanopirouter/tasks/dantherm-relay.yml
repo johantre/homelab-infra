@@ -1,0 +1,25 @@
+---
+- name: Install Dantherm relay script
+  ansible.builtin.copy:
+    src: dantherm-relay.py
+    dest: /usr/local/bin/dantherm-relay.py
+    owner: root
+    group: root
+    mode: "0755"
+  notify: Restart dantherm-relay
+
+- name: Install Dantherm relay systemd service
+  ansible.builtin.template:
+    src: dantherm-relay.service.j2
+    dest: /etc/systemd/system/dantherm-relay.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart dantherm-relay
+
+- name: Enable and start Dantherm relay
+  ansible.builtin.systemd:
+    name: dantherm-relay
+    enabled: true
+    state: started
+    daemon_reload: true

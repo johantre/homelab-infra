@@ -34,8 +34,9 @@ table inet filter {
         # LAN always allowed to reach router (DNS, DHCP, SSH)
         iifname $LAN accept
 
-        # Modbus segment allowed to reach router (DNS, DHCP)
+        # Modbus segment allowed to reach router (DNS, DHCP, Dantherm relay)
         iifname $MODBUS ip protocol { tcp, udp } th dport { 53, 67 } accept
+        iifname $MODBUS ip saddr {{ nanopirouter_dantherm_discovery_ip }} udp dport 6400 accept
 
         # WireGuard
         iifname $WAN udp dport {{ nanopirouter_wg_port }} accept
@@ -83,9 +84,6 @@ table ip nat {
 
     chain prerouting {
         type nat hook prerouting priority -100;
-
-        # Relay Dantherm UDP discovery (broadcast poort 6400) van LAN naar LAN2
-        iifname $LAN udp dport 6400 dnat ip to {{ nanopirouter_dantherm_discovery_ip }}
     }
 
     chain postrouting {

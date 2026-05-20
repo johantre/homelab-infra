@@ -1,0 +1,14 @@
+[Unit]
+Description=Dantherm UDP discovery relay (poort 6400, LAN → LAN2)
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /usr/local/bin/dantherm-relay.py
+Environment=DANTHERM_IP={{ nanopirouter_dantherm_discovery_ip }}
+Environment=LAN1_PREFIX={{ nanopirouter_lan_ip | regex_replace('\\.\\d+$', '.') }}
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -3,3 +3,9 @@
   ansible.builtin.systemd:
     name: "wg-quick@{{ nanopirouter_wg_interface }}"
     state: restarted
+
+- name: Restart dantherm-relay
+  ansible.builtin.systemd:
+    name: dantherm-relay
+    state: restarted
+    daemon_reload: true
