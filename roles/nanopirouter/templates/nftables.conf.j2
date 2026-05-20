@@ -34,9 +34,8 @@ table inet filter {
         # LAN always allowed to reach router (DNS, DHCP, SSH)
         iifname $LAN accept
 
-        # Modbus segment allowed to reach router (DNS, DHCP, mDNS)
+        # Modbus segment allowed to reach router (DNS, DHCP)
         iifname $MODBUS ip protocol { tcp, udp } th dport { 53, 67 } accept
-        iifname $MODBUS udp dport 5353 accept
 
         # WireGuard
         iifname $WAN udp dport {{ nanopirouter_wg_port }} accept
