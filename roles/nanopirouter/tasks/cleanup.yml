@@ -1,0 +1,20 @@
+---
+# Verwijder overblijfselen van deprecated features
+
+- name: Stop en verwijder dantherm-relay service (deprecated)
+  ansible.builtin.systemd:
+    name: dantherm-relay
+    state: stopped
+    enabled: false
+    daemon_reload: true
+  failed_when: false
+
+- name: Verwijder dantherm-relay service file (deprecated)
+  ansible.builtin.file:
+    path: /etc/systemd/system/dantherm-relay.service
+    state: absent
+
+- name: Verwijder dantherm-relay script (deprecated)
+  ansible.builtin.file:
+    path: /usr/local/bin/dantherm-relay.py
+    state: absent
