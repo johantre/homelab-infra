@@ -84,6 +84,9 @@ table ip nat {
 
     chain prerouting {
         type nat hook prerouting priority -100;
+
+        # Relay Dantherm UDP discovery (broadcast poort 6400) van LAN naar LAN2
+        iifname $LAN udp dport 6400 dnat ip to {{ nanopirouter_dantherm_discovery_ip }}
     }
 
     chain postrouting {
