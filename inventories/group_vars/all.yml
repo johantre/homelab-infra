@@ -105,6 +105,9 @@ nanopirouter_dhcp_reservations:
   - name: hw-p1meter
     mac: "5c:2f:af:35:d7:5e"
     ip: "192.168.3.27"
+  - name: denon-avr
+    mac: "00:06:78:69:5f:2c"
+    ip: "192.168.3.6"
   - name: harmonyhub
     mac: "c8:db:26:09:76:bb"
     ip: "192.168.3.10"
