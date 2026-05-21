@@ -41,7 +41,7 @@ enable_esphome: true
 enable_samba: true
 
 # Ports (host-side);
-code_server_port: 8443      # linuxserver/code-server default
+code_server_port: 8443      # linuxserver/code-server default 
 samba_tcp_445: 445          # change when needed
 samba_tcp_139: 139
 ssh_port: 2222
@@ -111,9 +111,6 @@ nanopirouter_dhcp_reservations:
   - name: dantherm
     mac: "00:25:6f:80:04:ca"
     ip: "192.168.3.36"
-  - name: hp-printer
-    mac: "00:41:0e:f3:42:cc"
-    ip: "192.168.3.55"
   - name: akeem-kaisa
     mac: "5c:e4:2a:26:cd:ed"
     ip: "192.168.3.41"
