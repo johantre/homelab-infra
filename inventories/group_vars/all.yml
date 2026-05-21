@@ -108,6 +108,9 @@ nanopirouter_dhcp_reservations:
   - name: harmonyhub
     mac: "c8:db:26:09:76:bb"
     ip: "192.168.3.10"
+  - name: denon-avr
+    mac: "00:06:78:69:5f:2c"
+    ip: "192.168.3.120"
   - name: dantherm
     mac: "00:25:6f:80:04:ca"
     ip: "192.168.3.36"
