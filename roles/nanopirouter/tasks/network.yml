@@ -48,9 +48,9 @@
   changed_when: true
   when: netplan_config is changed or netplan_default_removed is changed
 
-- name: Configure WAN interface with stable globally administered MAC
+- name: Configure WAN interface with stable globally administered MAC and hostname
   ansible.builtin.command:
-    cmd: nmcli connection modify "Wired connection 1" ethernet.cloned-mac-address a0:02:50:9b:20:d4
+    cmd: nmcli connection modify "Wired connection 1" ethernet.cloned-mac-address a0:02:50:9b:20:d4 ipv4.dhcp-hostname {{ nanopirouter_hostname }}
   register: wan_mac_result
   changed_when: wan_mac_result.rc == 0
   failed_when: false
