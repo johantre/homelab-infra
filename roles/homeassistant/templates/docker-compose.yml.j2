@@ -25,6 +25,8 @@ services:
     command: tunnel --no-autoupdate run --token ${CF_TUNNEL_TOKEN}
     environment:
       - CF_TUNNEL_TOKEN=${CF_TUNNEL_TOKEN}
+    extra_hosts:
+      - "{{ ha_container_name }}:host-gateway"
 {% endif %}
 {% if enable_esphome %}
   esphome:
