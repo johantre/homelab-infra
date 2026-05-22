@@ -15,6 +15,8 @@ on:
 jobs:
   deploy-nanopirouter:
     runs-on: ${{ fromJSON(format('["self-hosted","nanopirouter","{0}"]', inputs.environment || 'prod')) }}
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
       - name: Checkout infra repository

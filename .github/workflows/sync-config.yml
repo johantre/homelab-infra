@@ -44,6 +44,8 @@ jobs:
   sync:
     name: Sync ${{ inputs.device || 'homeassistant' }}
     runs-on: ${{ fromJSON(format('["self-hosted","homeassistant","{0}"]', inputs.environment || 'prod')) }}
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
       - name: Determine device and options
