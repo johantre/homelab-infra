@@ -48,6 +48,13 @@
   changed_when: true
   when: netplan_config is changed or netplan_default_removed is changed
 
+- name: Configure WAN interface to use hardware MAC address
+  ansible.builtin.command:
+    cmd: nmcli connection modify "Wired connection 1" ethernet.cloned-mac-address permanent
+  register: wan_mac_result
+  changed_when: wan_mac_result.rc == 0
+  failed_when: false
+
 - name: Check if LAN interface has carrier
   ansible.builtin.shell: cat /sys/class/net/{{ nanopirouter_lan_interface }}/carrier 2>/dev/null || echo 0
   register: lan_carrier
