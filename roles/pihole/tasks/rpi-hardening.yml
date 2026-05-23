@@ -1,0 +1,25 @@
+---
+- name: Check if running on Raspberry Pi (ARM)
+  ansible.builtin.set_fact:
+    is_raspberry_pi: "{{ ansible_architecture in ['aarch64', 'armv7l', 'armv6l'] }}"
+
+- name: Disable WiFi via boot config (Raspberry Pi)
+  ansible.builtin.lineinfile:
+    path: /boot/firmware/config.txt
+    line: "dtoverlay=disable-wifi"
+    state: present
+  become: true
+  when: is_raspberry_pi
+
+- name: Disable Bluetooth via boot config (Raspberry Pi)
+  ansible.builtin.lineinfile:
+    path: /boot/firmware/config.txt
+    line: "dtoverlay=disable-bt"
+    state: present
+  become: true
+  when: is_raspberry_pi
+
+- name: Remind operator reboot is required
+  ansible.builtin.debug:
+    msg: "WiFi/BT disabled in /boot/firmware/config.txt — reboot required to take effect"
+  when: is_raspberry_pi

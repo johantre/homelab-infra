@@ -100,7 +100,7 @@ nanopirouter_dhcp_reservations:
     mac: "e4:5f:01:ac:4a:71"
     ip: "192.168.3.8"
   - name: pihole
-    mac: "e4:5f:01:ac:4a:94"
+    mac: "e4:5f:01:ac:4a:92"
     ip: "192.168.3.11"
   - name: hw-p1meter
     mac: "5c:2f:af:35:d7:5e"

@@ -165,6 +165,11 @@
     - "'ha_target' in group_names"
     - enable_argon_fan | default(false) | bool
 
+# Raspberry Pi hardening (disable Bluetooth)
+- name: Include Raspberry Pi hardening
+  ansible.builtin.include_tasks: rpi-hardening.yml
+  when: "'ha_target' in group_names"
+
 - name: Sync repo from controller → target (ha_target group)
   ansible.posix.synchronize:
     src: "{{ ha_config_repo_dir }}/"

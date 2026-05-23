@@ -56,6 +56,11 @@
     - "'pihole_target' in group_names"
     - enable_argon_fan | default(false) | bool
 
+# Raspberry Pi hardening (disable WiFi + Bluetooth)
+- name: Include Raspberry Pi hardening
+  ansible.builtin.include_tasks: rpi-hardening.yml
+  when: "'pihole_target' in group_names"
+
 # Create base directories for the stack
 - name: Ensure PiHole base directories exist
   ansible.builtin.file:
