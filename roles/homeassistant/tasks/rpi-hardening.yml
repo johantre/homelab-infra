@@ -9,9 +9,14 @@
     line: "dtoverlay=disable-bt"
     state: present
   become: true
+  register: bt_disabled
   when: is_raspberry_pi
 
-- name: Remind operator reboot is required
-  ansible.builtin.debug:
-    msg: "BT disabled in /boot/firmware/config.txt — reboot required to take effect"
-  when: is_raspberry_pi
+- name: Reboot to apply Bluetooth disable
+  ansible.builtin.reboot:
+    reboot_timeout: 120
+    msg: "Rebooting to apply Bluetooth disable"
+  become: true
+  when:
+    - is_raspberry_pi
+    - bt_disabled.changed

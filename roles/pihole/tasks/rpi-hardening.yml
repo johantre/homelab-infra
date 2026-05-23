@@ -9,6 +9,7 @@
     line: "dtoverlay=disable-wifi"
     state: present
   become: true
+  register: wifi_disabled
   when: is_raspberry_pi
 
 - name: Disable Bluetooth via boot config (Raspberry Pi)
@@ -17,9 +18,14 @@
     line: "dtoverlay=disable-bt"
     state: present
   become: true
+  register: bt_disabled
   when: is_raspberry_pi
 
-- name: Remind operator reboot is required
-  ansible.builtin.debug:
-    msg: "WiFi/BT disabled in /boot/firmware/config.txt — reboot required to take effect"
-  when: is_raspberry_pi
+- name: Reboot to apply WiFi/BT changes
+  ansible.builtin.reboot:
+    reboot_timeout: 120
+    msg: "Rebooting to apply WiFi/BT disable"
+  become: true
+  when:
+    - is_raspberry_pi
+    - wifi_disabled.changed or bt_disabled.changed
