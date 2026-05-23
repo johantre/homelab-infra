@@ -3,6 +3,15 @@
   ansible.builtin.set_fact:
     is_raspberry_pi: "{{ ansible_architecture in ['aarch64', 'armv7l', 'armv6l'] }}"
 
+- name: Disable WiFi via boot config (Raspberry Pi)
+  ansible.builtin.lineinfile:
+    path: /boot/firmware/config.txt
+    line: "dtoverlay=disable-wifi"
+    state: present
+  become: true
+  notify: Reboot for boot config changes
+  when: is_raspberry_pi
+
 - name: Disable Bluetooth via boot config (Raspberry Pi)
   ansible.builtin.lineinfile:
     path: /boot/firmware/config.txt
