@@ -8,9 +8,12 @@ bind-dynamic
 except-interface={{ nanopirouter_wan_interface }}
 except-interface=lo
 
-# DNS upstream → PiHole
+# DNS upstream → PiHole, fallback to Cloudflare if PiHole is down
 server={{ nanopirouter_dns_server }}
+server=1.1.1.1
+server=1.0.0.1
 no-resolv
+strict-order
 
 # Local domain
 domain=local
@@ -22,7 +25,7 @@ local=/local/
 # ============================================================
 dhcp-range=set:lan,{{ nanopirouter_lan_dhcp_start }},{{ nanopirouter_lan_dhcp_end }},{{ nanopirouter_lan_dhcp_lease }}
 dhcp-option=tag:lan,option:router,{{ nanopirouter_lan_ip }}
-dhcp-option=tag:lan,option:dns-server,{{ nanopirouter_dns_server }}
+dhcp-option=tag:lan,option:dns-server,{{ nanopirouter_lan_ip }}
 
 # DHCP reservations LAN
 {% for host in nanopirouter_dhcp_reservations %}
