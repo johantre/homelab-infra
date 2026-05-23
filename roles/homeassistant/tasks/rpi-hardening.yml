@@ -9,10 +9,5 @@
     line: "dtoverlay=disable-bt"
     state: present
   become: true
-  register: bt_disabled
-  when: is_raspberry_pi
-
-- name: Flag reboot required
-  ansible.builtin.set_fact:
-    rpi_reboot_required: "{{ bt_disabled.changed }}"
+  notify: Reboot for boot config changes
   when: is_raspberry_pi

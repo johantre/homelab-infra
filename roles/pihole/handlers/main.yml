@@ -23,3 +23,7 @@
   ansible.builtin.shell: |
     sg docker -c 'docker restart {{ pihole_container_name }}'
   changed_when: true
+
+- name: Reboot for boot config changes
+  ansible.builtin.shell: shutdown -r +1
+  become: true

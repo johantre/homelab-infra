@@ -7,3 +7,7 @@
     state: restarted
   become: true
   when: ansible_architecture in ['aarch64', 'armv7l', 'armv6l']
+
+- name: Reboot for boot config changes
+  ansible.builtin.shell: shutdown -r +1
+  become: true
