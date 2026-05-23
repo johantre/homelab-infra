@@ -9,6 +9,16 @@
   ansible.builtin.setup:
     gather_subset: ['min']
 
+# Ensure the Pi itself has working DNS during deploy (independent of its own PiHole container)
+- name: Set deploy-time DNS to 1.1.1.1 (avoid circular dependency)
+  ansible.builtin.copy:
+    dest: /etc/resolv.conf
+    content: |
+      nameserver 1.1.1.1
+      nameserver 1.0.0.1
+    mode: "0644"
+  become: true
+
 # Set hostname (so one USB works for both HA and PiHole)
 - name: Set hostname to pihole_hostname
   ansible.builtin.hostname:
