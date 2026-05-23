@@ -21,11 +21,7 @@
   register: bt_disabled
   when: is_raspberry_pi
 
-- name: Reboot to apply WiFi/BT changes
-  ansible.builtin.reboot:
-    reboot_timeout: 120
-    msg: "Rebooting to apply WiFi/BT disable"
-  become: true
-  when:
-    - is_raspberry_pi
-    - wifi_disabled.changed or bt_disabled.changed
+- name: Flag reboot required
+  ansible.builtin.set_fact:
+    rpi_reboot_required: "{{ wifi_disabled.changed or bt_disabled.changed }}"
+  when: is_raspberry_pi

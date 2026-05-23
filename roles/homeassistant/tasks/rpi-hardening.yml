@@ -12,11 +12,7 @@
   register: bt_disabled
   when: is_raspberry_pi
 
-- name: Reboot to apply Bluetooth disable
-  ansible.builtin.reboot:
-    reboot_timeout: 120
-    msg: "Rebooting to apply Bluetooth disable"
-  become: true
-  when:
-    - is_raspberry_pi
-    - bt_disabled.changed
+- name: Flag reboot required
+  ansible.builtin.set_fact:
+    rpi_reboot_required: "{{ bt_disabled.changed }}"
+  when: is_raspberry_pi

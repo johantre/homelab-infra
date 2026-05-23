@@ -435,3 +435,9 @@
   ansible.builtin.include_tasks: configure-long-lived-token.yml
   when: "'ha_target' in group_names"
 
+# Schedule reboot as very last step if rpi-hardening made changes
+- name: Schedule reboot to apply boot config changes (60s delay)
+  ansible.builtin.shell: nohup sh -c 'sleep 60 && shutdown -r now' > /dev/null 2>&1 &
+  become: true
+  when: rpi_reboot_required | default(false)
+

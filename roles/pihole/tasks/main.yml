@@ -215,6 +215,12 @@
     - not (maintenance_mode | default(false) | bool)
     - not restore_completed | default(false)
 
+# Schedule reboot as very last step if rpi-hardening made changes
+- name: Schedule reboot to apply boot config changes (60s delay)
+  ansible.builtin.shell: nohup sh -c 'sleep 60 && shutdown -r now' > /dev/null 2>&1 &
+  become: true
+  when: rpi_reboot_required | default(false)
+
 # Summary of what happened
 - name: Deployment summary
   ansible.builtin.debug:
