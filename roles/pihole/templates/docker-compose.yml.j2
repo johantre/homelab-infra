@@ -42,8 +42,8 @@ services:
       APP_PASS: "${NETALERTX_APP_PASSWORD}"
       SETPWD_enable_password: "True"
     volumes:
-      - "{{ netalertx_data_dir }}:/app/db"
-      - "{{ netalertx_config_dir }}:/app/config"
+      - "{{ netalertx_data_dir }}:/data/db"
+      - "{{ netalertx_config_dir }}:/data/config"
       - "/etc/localtime:/etc/localtime:ro"
     cap_add:
       - NET_ADMIN
