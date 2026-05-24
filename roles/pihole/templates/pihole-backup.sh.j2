@@ -31,19 +31,19 @@ log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] pihole-backup: $*"; }
 # ============================================================
 # Decide whether to run
 # ============================================================
-DAY_OF_MONTH=$(date +%d)
-MONTHLY_RUN=false
+DAY_OF_WEEK=$(date +%u)  # 1=Monday ... 7=Sunday
+WEEKLY_RUN=false
 CHANGE_PENDING=false
 
-[ "$DAY_OF_MONTH" = "01" ] && MONTHLY_RUN=true
-[ -f "$FLAG_FILE" ]        && CHANGE_PENDING=true
+[ "$DAY_OF_WEEK" = "1" ] && WEEKLY_RUN=true
+[ -f "$FLAG_FILE" ]       && CHANGE_PENDING=true
 
-if [ "$MONTHLY_RUN" = false ] && [ "$CHANGE_PENDING" = false ]; then
-    log "No changes pending and not monthly run — skipping"
+if [ "$WEEKLY_RUN" = false ] && [ "$CHANGE_PENDING" = false ]; then
+    log "No changes pending and not weekly run — skipping"
     exit 0
 fi
 
-$MONTHLY_RUN    && log "Reason: monthly scheduled run (day 1)"
+$WEEKLY_RUN     && log "Reason: weekly scheduled run (Monday)"
 $CHANGE_PENDING && log "Reason: config change detected"
 
 # Clear the flag now — even if backup fails we don't want infinite retries

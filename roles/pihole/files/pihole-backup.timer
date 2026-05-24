@@ -1,5 +1,5 @@
 [Unit]
-Description=Nightly check for pending PiHole backup (monthly unconditional)
+Description=Nightly check for pending backup (weekly unconditional on Monday)
 Requires=pihole-backup.service
 
 [Timer]
