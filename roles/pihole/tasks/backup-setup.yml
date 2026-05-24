@@ -65,6 +65,14 @@
   become: true
   notify: reload systemd
 
+- name: Deploy netalertx-config-watch.path
+  ansible.builtin.template:
+    src: netalertx-config-watch.path.j2
+    dest: /etc/systemd/system/netalertx-config-watch.path
+    mode: "0644"
+  become: true
+  notify: reload systemd
+
 - name: Flush handlers (reload systemd before enabling units)
   ansible.builtin.meta: flush_handlers
 
@@ -79,6 +87,14 @@
 - name: Enable and start pihole-config-watch.path
   ansible.builtin.systemd:
     name: pihole-config-watch.path
+    enabled: true
+    state: started
+    daemon_reload: false
+  become: true
+
+- name: Enable and start netalertx-config-watch.path
+  ansible.builtin.systemd:
+    name: netalertx-config-watch.path
     enabled: true
     state: started
     daemon_reload: false

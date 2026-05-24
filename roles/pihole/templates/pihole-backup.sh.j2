@@ -1,19 +1,24 @@
 #!/bin/bash
-# pihole-backup.sh - Backup PiHole config + sync pihole.toml to Git
+# pihole-backup.sh - Backup PiHole + NetAlertX config, sync pihole.toml to Git
 #
 # Triggered nightly by pihole-backup.timer (03:00).
 # Runs only when:
-#   - /run/pihole-backup-pending exists  (set by pihole-config-watch.path on change)
+#   - /run/pihole-backup-pending exists  (set by pihole-config-watch.path or
+#                                         netalertx-config-watch.path on change)
 #   - OR it is the 1st of the month      (monthly unconditional safety net)
 #
-# Backup contents: pihole.toml + gravity.db (no container stop needed)
-# Git sync:        pihole.toml with pwhash stripped
+# PiHole backup:    pihole.toml + gravity.db
+# NetAlertX backup: app.conf + app.db
+# Git sync:         pihole.toml with pwhash stripped
 
 set -euo pipefail
 
 FLAG_FILE="/run/pihole-backup-pending"
 PIHOLE_ETC="{{ pihole_etc_dir }}"
 BACKUP_DIR="{{ pihole_backup_dir }}"
+NETALERTX_DATA_DIR="{{ netalertx_data_dir }}"
+NETALERTX_CONFIG_DIR="{{ netalertx_config_dir }}"
+NETALERTX_BACKUP_DIR="{{ netalertx_backup_dir }}"
 KEEP_BACKUPS=7
 
 ENV_FILE="/etc/pihole-backup.env"
@@ -82,16 +87,62 @@ BACKUP_SIZE=$(du -sh "$BACKUP_FILE" | cut -f1)
 log "Backup created: $(basename "$BACKUP_FILE") ($BACKUP_SIZE)"
 
 # ============================================================
-# STEP 2: Rotate old backups (keep last N)
+# STEP 2: Rotate old PiHole backups (keep last N)
 # ============================================================
 REMOVED=$(ls -t "$BACKUP_DIR"/pihole-backup-*.tar.gz 2>/dev/null | tail -n +$((KEEP_BACKUPS+1)))
 if [ -n "$REMOVED" ]; then
     echo "$REMOVED" | xargs rm -f
-    log "Rotated old backups (keeping last $KEEP_BACKUPS)"
+    log "Rotated old pihole backups (keeping last $KEEP_BACKUPS)"
 fi
 
 # ============================================================
-# STEP 3: Git sync pihole.toml (pwhash stripped)
+# STEP 3: Create NetAlertX backup
+# ============================================================
+log "Starting NetAlertX backup..."
+
+NETALERTX_TMPDIR=$(mktemp -d)
+trap 'rm -rf "$TMPDIR" "$NETALERTX_TMPDIR"' EXIT
+
+mkdir -p "$NETALERTX_BACKUP_DIR"
+
+# app.conf - plain text config file
+if [ -f "$NETALERTX_CONFIG_DIR/app.conf" ]; then
+    cp "$NETALERTX_CONFIG_DIR/app.conf" "$NETALERTX_TMPDIR/app.conf"
+else
+    log "WARNING: app.conf not found at $NETALERTX_CONFIG_DIR"
+fi
+
+# app.db - use Python sqlite3 backup API for consistency while container runs
+if [ -f "$NETALERTX_DATA_DIR/app.db" ]; then
+    python3 -c "
+import sqlite3
+src = sqlite3.connect('$NETALERTX_DATA_DIR/app.db')
+dst = sqlite3.connect('$NETALERTX_TMPDIR/app.db')
+src.backup(dst)
+dst.close()
+src.close()
+" && log "app.db backed up (consistent copy)" \
+  || { log "WARNING: Python sqlite3 backup failed, falling back to cp"; cp "$NETALERTX_DATA_DIR/app.db" "$NETALERTX_TMPDIR/app.db" 2>/dev/null || true; }
+else
+    log "WARNING: app.db not found at $NETALERTX_DATA_DIR"
+fi
+
+NETALERTX_BACKUP_FILE="$NETALERTX_BACKUP_DIR/netalertx-backup-$TIMESTAMP.tar.gz"
+tar -czf "$NETALERTX_BACKUP_FILE" -C "$NETALERTX_TMPDIR" .
+NETALERTX_BACKUP_SIZE=$(du -sh "$NETALERTX_BACKUP_FILE" | cut -f1)
+log "NetAlertX backup created: $(basename "$NETALERTX_BACKUP_FILE") ($NETALERTX_BACKUP_SIZE)"
+
+# ============================================================
+# STEP 4: Rotate old NetAlertX backups (keep last N)
+# ============================================================
+REMOVED=$(ls -t "$NETALERTX_BACKUP_DIR"/netalertx-backup-*.tar.gz 2>/dev/null | tail -n +$((KEEP_BACKUPS+1)))
+if [ -n "$REMOVED" ]; then
+    echo "$REMOVED" | xargs rm -f
+    log "Rotated old netalertx backups (keeping last $KEEP_BACKUPS)"
+fi
+
+# ============================================================
+# STEP 5: Git sync pihole.toml (pwhash stripped)
 # ============================================================
 if [ ! -f "$ENV_FILE" ]; then
     log "No $ENV_FILE found, skipping git sync"

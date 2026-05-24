@@ -180,6 +180,7 @@ pihole_stack_dir: "{{ base_dir }}/pihole-stack-ansible"
 pihole_etc_dir: "{{ pihole_stack_dir }}/data/pihole-etc"
 pihole_dnsmasq_dir: "{{ pihole_stack_dir }}/data/dnsmasq-etc"
 pihole_backup_dir: "/mnt/backup/pihole"
+netalertx_backup_dir: "/mnt/backup/netalertx"
 pihole_config_repo_dir: "{{ config_repo_path }}/pihole"
 pihole_container_name: pihole_ansible
 pihole_host_port_http: 80

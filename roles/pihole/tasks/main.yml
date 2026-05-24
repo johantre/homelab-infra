@@ -102,6 +102,16 @@
   become: true
   when: "'pihole_target' in group_names"
 
+- name: Ensure NetAlertX backup directory exists on host
+  ansible.builtin.file:
+    path: "{{ netalertx_backup_dir }}"
+    state: directory
+    owner: "{{ runtime_uid }}"
+    group: "{{ runtime_gid }}"
+    mode: "0755"
+  become: true
+  when: "'pihole_target' in group_names"
+
 - name: Fail fast if we cannot write to pihole_stack_dir
   ansible.builtin.file:
     path: "{{ pihole_stack_dir }}/.permcheck"
