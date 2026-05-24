@@ -192,7 +192,8 @@ pihole_web_password: "{{ lookup('env', 'PIHOLE_WEB_PASSWORD') }}"
 netalertx_version: "latest"
 netalertx_container_name: netalertx_ansible
 netalertx_port: 20211
-netalertx_data_dir: "{{ pihole_stack_dir }}/data/netalertx"
+netalertx_data_dir: "{{ pihole_stack_dir }}/data/netalertx/db"
+netalertx_config_dir: "{{ pihole_stack_dir }}/data/netalertx/config"
 netalertx_lan_interface: "eth0"
 netalertx_scan_subnets: "192.168.3.0/24 --interface={{ netalertx_lan_interface }}"
 netalertx_app_password: "{{ lookup('env', 'NETALERTX_APP_PASSWORD') }}"

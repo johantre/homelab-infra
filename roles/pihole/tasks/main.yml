@@ -83,6 +83,7 @@
     - "{{ pihole_stack_dir }}"
     - "{{ pihole_etc_dir }}"
     - "{{ netalertx_data_dir }}"
+    - "{{ netalertx_config_dir }}"
 
 - name: Ensure PiHole backup directory exists on host
   ansible.builtin.file:

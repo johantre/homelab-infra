@@ -1,4 +1,4 @@
-name: Deploy PiHole
+name: Deploy Network Services
 
 on:
   workflow_dispatch:
@@ -21,7 +21,7 @@ on:
           - 'false'
 
 jobs:
-  deploy-pihole:
+  deploy-network-services:
     runs-on: ${{ fromJSON(format('["self-hosted","pihole","{0}"]', inputs.environment || 'prod')) }}
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -65,6 +65,7 @@ jobs:
           [[ -z "${{ secrets.GH_USERNAME }}" ]] && MISSING_SECRETS+=("GH_USERNAME")
           [[ -z "${{ secrets.GH_PAT }}" ]] && MISSING_SECRETS+=("GH_PAT")
           [[ -z "${{ secrets.PIHOLE_WEB_PASSWORD }}" ]] && MISSING_SECRETS+=("PIHOLE_WEB_PASSWORD")
+          [[ -z "${{ secrets.NETALERTX_APP_PASSWORD }}" ]] && MISSING_SECRETS+=("NETALERTX_APP_PASSWORD")
           [[ -z "${{ secrets.SSH_PRIV_KEY_B64 }}" ]] && MISSING_SECRETS+=("SSH_PRIV_KEY_B64")
 
           if [[ ${#MISSING_SECRETS[@]} -gt 0 ]]; then
@@ -143,12 +144,13 @@ jobs:
 
           echo "✅ Cleanup complete"
 
-      - name: Deploy PiHole with Ansible
+      - name: Deploy Network Services with Ansible
         env:
           GH_USERNAME: ${{ secrets.GH_USERNAME }}
           GH_PAT: ${{ secrets.GH_PAT }}
           SSH_PRIV_KEY_B64: ${{ secrets.SSH_PRIV_KEY_B64 }}
           PIHOLE_WEB_PASSWORD: ${{ secrets.PIHOLE_WEB_PASSWORD }}
+          NETALERTX_APP_PASSWORD: ${{ secrets.NETALERTX_APP_PASSWORD }}
         run: |
           echo "🚀 Starting PiHole deployment..."
 
@@ -163,7 +165,7 @@ jobs:
             -e maintenance_mode=${{ github.event.inputs.maintenance_mode || 'true' }} \
             -e config_repo_path=$GITHUB_WORKSPACE/config-repo \
             -vv \
-            2>&1 | tee ansible-deploy-pihole.log
+            2>&1 | tee ansible-deploy-network-services.log
 
           ANSIBLE_EXIT_CODE=${PIPESTATUS[0]}
 
@@ -173,7 +175,7 @@ jobs:
             echo "Exit code: ${ANSIBLE_EXIT_CODE}"
             echo ""
             echo "📋 Last 50 lines of output:"
-            tail -n 50 ansible-deploy-pihole.log
+            tail -n 50 ansible-deploy-network-services.log
             exit 1
           fi
 
@@ -195,6 +197,16 @@ jobs:
           fi
 
           echo "✅ PiHole container is running"
+
+          if ! sg docker -c 'docker ps --filter "name=netalertx_ansible" --format "{{.Names}}"' | grep -q "netalertx_ansible"; then
+            echo "❌ CRITICAL: NetAlertX container is NOT running!"
+            echo ""
+            echo "Docker logs (last 30 lines):"
+            sg docker -c 'docker logs netalertx_ansible --tail 30' 2>&1 || echo "Could not fetch logs"
+            exit 1
+          fi
+
+          echo "✅ NetAlertX container is running"
 
           # Check if web UI is responding (wait max 90 seconds)
           echo "Waiting for PiHole web UI to be ready..."
@@ -225,10 +237,11 @@ jobs:
           echo "======================================"
           echo "Deployed to: localhost (self-hosted runner)"
           echo "PiHole web UI: http://$(hostname -I | awk '{print $1}')/admin/"
+          echo "NetAlertX web UI: http://$(hostname -I | awk '{print $1}'):20211"
           echo "DNS server: $(hostname -I | awk '{print $1}'):53"
           echo ""
           echo "Running containers:"
-          sg docker -c 'docker ps --filter "name=pihole" --format "table {{.Names}}\t{{.Status}}"' || echo "Could not list containers"
+          sg docker -c 'docker ps --filter "label=com.docker.compose.project=pihole-stack-ansible" --format "table {{.Names}}\t{{.Status}}"' || echo "Could not list containers"
           echo ""
 
           if [[ "${{ job.status }}" == "success" ]]; then
@@ -242,6 +255,6 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: ansible-deploy-pihole-log
-          path: ${{ github.workspace }}/ansible-deploy-pihole.log
+          name: ansible-deploy-network-services-log
+          path: ${{ github.workspace }}/ansible-deploy-network-services.log
           retention-days: 7
