@@ -12,7 +12,7 @@ on:
           - prod
           - dev
       maintenance_pihole:
-        description: 'PiHole maintenance mode (true = behoud data, false = restore uit backup)'
+        description: 'PiHole maintenance mode (true = keep data, false = restore from backup)'
         required: false
         default: 'true'
         type: choice
@@ -20,7 +20,7 @@ on:
           - 'true'
           - 'false'
       maintenance_netalertx:
-        description: 'NetAlertX maintenance mode (true = behoud data, false = restore uit backup)'
+        description: 'NetAlertX maintenance mode (true = keep data, false = restore from backup)'
         required: false
         default: 'true'
         type: choice
