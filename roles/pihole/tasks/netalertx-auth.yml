@@ -59,6 +59,22 @@
   become: true
   register: _scan_subnets_result
 
+- name: Enforce AVAHISCAN_RUN in NetAlertX app.conf
+  ansible.builtin.lineinfile:
+    path: "{{ netalertx_config_dir }}/app.conf"
+    regexp: '^AVAHISCAN_RUN='
+    line: "AVAHISCAN_RUN='before_name_updates'"
+  become: true
+  register: _avahiscan_result
+
+- name: Enforce DIGSCAN_RUN in NetAlertX app.conf
+  ansible.builtin.lineinfile:
+    path: "{{ netalertx_config_dir }}/app.conf"
+    regexp: '^DIGSCAN_RUN='
+    line: "DIGSCAN_RUN='before_name_updates'"
+  become: true
+  register: _digscan_result
+
 - name: Restart NetAlertX to apply settings
   ansible.builtin.shell: sg docker -c 'docker restart {{ netalertx_container_name }}'
-  when: _setpwd_result is changed or _scan_subnets_result is changed
+  when: _setpwd_result is changed or _scan_subnets_result is changed or _avahiscan_result is changed or _digscan_result is changed
