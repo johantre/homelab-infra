@@ -102,6 +102,14 @@
     mode: "0644"
   changed_when: false
 
+# Render NetAlertX app.conf (always - sets password and enables auth)
+- name: Render NetAlertX app.conf
+  ansible.builtin.template:
+    src: "netalertx-app.conf.j2"
+    dest: "{{ netalertx_config_dir }}/app.conf"
+    mode: "0640"
+    owner: "{{ ansible_user_id }}"
+
 # Render docker-compose (always)
 - name: Render docker-compose
   ansible.builtin.template:
@@ -118,7 +126,6 @@
     chdir: "{{ pihole_stack_dir }}"
   environment:
     PIHOLE_WEB_PASSWORD: "{{ pihole_web_password }}"
-    NETALERTX_APP_PASSWORD: "{{ netalertx_app_password }}"
   register: compose_up
   changed_when: false
 

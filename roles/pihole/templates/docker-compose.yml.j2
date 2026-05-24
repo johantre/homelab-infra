@@ -39,8 +39,6 @@ services:
     environment:
       TZ: "{{ tz }}"
       SCAN_SUBNETS: "{{ netalertx_scan_subnets }}"
-      APP_PASS: "${NETALERTX_APP_PASSWORD}"
-      SETPWD_enable_password: "True"
     volumes:
       - "{{ netalertx_data_dir }}:/data/db"
       - "{{ netalertx_config_dir }}:/data/config"
