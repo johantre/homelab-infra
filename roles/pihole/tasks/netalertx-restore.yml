@@ -57,8 +57,9 @@
   changed_when: true
   ignore_errors: true
 
-- name: Restore app.db
+- name: Restore app.db (remove WAL files to prevent corruption)
   ansible.builtin.shell: |
+    rm -f {{ netalertx_data_dir }}/app.db-wal {{ netalertx_data_dir }}/app.db-shm
     cp /tmp/netalertx-restore/app.db {{ netalertx_data_dir }}/app.db
     chown 20211:20211 {{ netalertx_data_dir }}/app.db
     chmod 644 {{ netalertx_data_dir }}/app.db
