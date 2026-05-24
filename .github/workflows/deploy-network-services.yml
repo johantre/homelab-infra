@@ -19,6 +19,14 @@ on:
         options:
           - 'true'
           - 'false'
+      reset_netalertx:
+        description: 'Wipe NetAlertX database and config (fresh start)'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
 
 jobs:
   deploy-network-services:
@@ -117,6 +125,13 @@ jobs:
           else
             echo "ℹ️  No existing stack found (this is OK)"
           fi
+
+      - name: Reset NetAlertX data (fresh start)
+        if: ${{ github.event.inputs.reset_netalertx == 'true' }}
+        run: |
+          echo "Wiping NetAlertX database and config..."
+          rm -rf "$HOME/homelab/target/pihole-stack-ansible/data/netalertx"
+          echo "Done — NetAlertX will initialize fresh on next deploy"
 
       - name: Clean up existing deployment
         run: |
