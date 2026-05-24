@@ -130,7 +130,7 @@ jobs:
         if: ${{ github.event.inputs.reset_netalertx == 'true' }}
         run: |
           echo "Wiping NetAlertX database and config..."
-          rm -rf "$HOME/homelab/target/pihole-stack-ansible/data/netalertx"
+          sudo rm -rf "$HOME/homelab/target/pihole-stack-ansible/data/netalertx"
           echo "Done — NetAlertX will initialize fresh on next deploy"
 
       - name: Clean up existing deployment
