@@ -242,8 +242,10 @@ jobs:
           echo ""
           PIHOLE_STATUS=$(sg docker -c 'docker ps --filter "name=pihole_ansible" --format "{{.Status}}"')
           NETALERTX_STATUS=$(sg docker -c 'docker ps --filter "name=netalertx_ansible" --format "{{.Status}}"')
-          echo "PiHole:    ${PIHOLE_STATUS:-DOWN}"
-          echo "NetAlertX: ${NETALERTX_STATUS:-DOWN}"
+          [[ "$PIHOLE_STATUS" == Up* ]] && PIHOLE_ICON="✅" || PIHOLE_ICON="❌"
+          [[ "$NETALERTX_STATUS" == Up* ]] && NETALERTX_ICON="✅" || NETALERTX_ICON="❌"
+          echo "$PIHOLE_ICON    PiHole:    ${PIHOLE_STATUS:-DOWN}"
+          echo "$NETALERTX_ICON NetAlertX: ${NETALERTX_STATUS:-DOWN}"
           echo ""
 
           if [[ "${{ job.status }}" == "success" ]]; then
