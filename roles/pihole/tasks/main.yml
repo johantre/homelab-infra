@@ -82,6 +82,14 @@
   loop:
     - "{{ pihole_stack_dir }}"
     - "{{ pihole_etc_dir }}"
+
+- name: Ensure NetAlertX data directories exist
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  become: true
+  loop:
     - "{{ netalertx_data_dir }}"
     - "{{ netalertx_config_dir }}"
 
@@ -107,8 +115,8 @@
   ansible.builtin.template:
     src: "netalertx-app.conf.j2"
     dest: "{{ netalertx_config_dir }}/app.conf"
-    mode: "0640"
-    owner: "{{ ansible_user_id }}"
+    mode: "0644"
+  become: true
 
 # Render docker-compose (always)
 - name: Render docker-compose
