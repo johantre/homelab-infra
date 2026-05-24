@@ -249,7 +249,7 @@ jobs:
           NETALERTX_STATUS=$(sg docker -c 'docker ps --filter "name=netalertx_ansible" --format "{{.Status}}"')
           [[ "$PIHOLE_STATUS" == Up* ]] && PIHOLE_ICON="✅" || PIHOLE_ICON="❌"
           [[ "$NETALERTX_STATUS" == Up* ]] && NETALERTX_ICON="✅" || NETALERTX_ICON="❌"
-          echo "$PIHOLE_ICON    PiHole:    ${PIHOLE_STATUS:-DOWN}"
+          echo "$PIHOLE_ICON PiHole:    ${PIHOLE_STATUS:-DOWN}"
           echo "$NETALERTX_ICON NetAlertX: ${NETALERTX_STATUS:-DOWN}"
           echo ""
 
