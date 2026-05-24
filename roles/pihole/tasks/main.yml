@@ -144,6 +144,10 @@
     msg: "Compose up ran."
   changed_when: _compose_changed
 
+# Enforce correct SETPWD auth settings in NetAlertX app.conf
+- name: Include NetAlertX auth setup
+  ansible.builtin.include_tasks: netalertx-auth.yml
+
 # Deploy backup script + systemd timer/path-watch (target only)
 - name: Include backup setup
   ansible.builtin.include_tasks: backup-setup.yml

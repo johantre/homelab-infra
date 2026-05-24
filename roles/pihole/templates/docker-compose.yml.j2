@@ -40,8 +40,6 @@ services:
       TZ: "{{ tz }}"
       SCAN_SUBNETS: "{{ netalertx_scan_subnets }}"
       LOADED_PLUGINS: "{{ netalertx_loaded_plugins }}"
-      SETPWD_enable_password: "True"
-      SETPWD_password: "{{ netalertx_app_password | hash('sha256') }}"
     volumes:
       - "{{ netalertx_data_dir }}:/data/db"
       - "{{ netalertx_config_dir }}:/data/config"

@@ -1,0 +1,47 @@
+---
+# Ensure NetAlertX auth settings are correct in app.conf.
+# NetAlertX writes default app.conf on first run (SETPWD_enable_password=False,
+# default password). These tasks enforce the correct values via docker exec
+# (runs as uid 20211, the container owner of the file) and restart only if changed.
+
+- name: Wait for NetAlertX app.conf to be initialized
+  ansible.builtin.wait_for:
+    path: "{{ netalertx_config_dir }}/app.conf"
+    timeout: 120
+
+- name: Check SETPWD_enable_password in app.conf
+  ansible.builtin.shell: |
+    sg docker -c 'docker exec {{ netalertx_container_name }} grep -q "SETPWD_enable_password=True" /data/config/app.conf' && echo 1 || echo 0
+  register: _setpwd_enable_check
+  changed_when: false
+  failed_when: false
+
+- name: Enable SETPWD password login in app.conf
+  ansible.builtin.shell: |
+    sg docker -c 'docker exec {{ netalertx_container_name }} sed -i "s/SETPWD_enable_password=False/SETPWD_enable_password=True/" /data/config/app.conf'
+  when: _setpwd_enable_check.stdout | trim == '0'
+  register: _setpwd_enable_fix
+
+- name: Check SETPWD_password hash in app.conf
+  no_log: true
+  ansible.builtin.shell:
+    cmd: |
+      HASH='{{ netalertx_app_password | hash("sha256") }}'
+      sg docker -c "docker exec {{ netalertx_container_name }} grep -q \"SETPWD_password='${HASH}'\" /data/config/app.conf" && echo 1 || echo 0
+  register: _setpwd_pass_check
+  changed_when: false
+  failed_when: false
+
+- name: Set SETPWD_password hash in app.conf
+  no_log: true
+  ansible.builtin.shell:
+    cmd: |
+      HASH='{{ netalertx_app_password | hash("sha256") }}'
+      sg docker -c "docker exec {{ netalertx_container_name }} sed -i \"s/SETPWD_password='[^']*'/SETPWD_password='${HASH}'/\" /data/config/app.conf"
+  when: _setpwd_pass_check.stdout | trim == '0'
+  register: _setpwd_pass_fix
+
+- name: Restart NetAlertX to apply auth settings
+  ansible.builtin.shell: |
+    sg docker -c 'docker restart {{ netalertx_container_name }}'
+  when: (_setpwd_enable_fix is changed) or (_setpwd_pass_fix is changed)
