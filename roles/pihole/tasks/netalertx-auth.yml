@@ -1,58 +1,56 @@
 ---
-# Ensure NetAlertX auth settings are correct in app.conf.
-# On first run NetAlertX writes a minimal default app.conf that lacks SETPWD settings.
-# SETPWD_* docker-compose env vars are NOT written to app.conf by NetAlertX.
-# Fix: write a script (ubuntu-owned), run it via docker exec (uid 20211 inside container),
-# restart only if something actually changed.
+# Enforce critical NetAlertX settings in app.conf that docker-compose env vars do NOT apply:
+#   - SETPWD_enable_password / SETPWD_password  (auth)
+#   - SCAN_SUBNETS                              (network scan scope)
+# Fix: write a script (ubuntu-owned), run via docker exec (uid 20211), restart only if changed.
 
 - name: Wait for NetAlertX app.conf to be initialized
   ansible.builtin.wait_for:
     path: "{{ netalertx_config_dir }}/app.conf"
     timeout: 120
 
-- name: Write NetAlertX SETPWD enforcement script
+- name: Write NetAlertX settings enforcement script
   no_log: true
   ansible.builtin.copy:
-    dest: /tmp/netalertx-setpwd.sh
+    dest: /tmp/netalertx-enforce.sh
     mode: "0755"
     content: |
       #!/bin/bash
       set -e
       CONTAINER="{{ netalertx_container_name }}"
       HASH='{{ netalertx_app_password | hash("sha256") }}'
+      SUBNETS='{{ netalertx_scan_subnets }}'
       CONF=/data/config/app.conf
       CHANGED=0
 
-      if ! docker exec "$CONTAINER" grep -q "SETPWD_enable_password=True" "$CONF"; then
-        if docker exec "$CONTAINER" grep -q "SETPWD_enable_password=" "$CONF"; then
-          docker exec "$CONTAINER" sed -i 's/SETPWD_enable_password=.*/SETPWD_enable_password=True/' "$CONF"
-        else
-          docker exec "$CONTAINER" bash -c "echo 'SETPWD_enable_password=True' >> $CONF"
+      enforce_setting() {
+        local KEY="$1" VAL="$2"
+        if ! docker exec "$CONTAINER" grep -qF "${KEY}=${VAL}" "$CONF"; then
+          if docker exec "$CONTAINER" grep -q "^${KEY}=" "$CONF"; then
+            docker exec "$CONTAINER" sed -i "s|^${KEY}=.*|${KEY}=${VAL}|" "$CONF"
+          else
+            docker exec "$CONTAINER" bash -c "echo '${KEY}=${VAL}' >> $CONF"
+          fi
+          CHANGED=1
         fi
-        CHANGED=1
-      fi
+      }
 
-      if ! docker exec "$CONTAINER" grep -qF "SETPWD_password='$HASH'" "$CONF"; then
-        if docker exec "$CONTAINER" grep -q "SETPWD_password=" "$CONF"; then
-          docker exec "$CONTAINER" bash -c "sed -i \"s/SETPWD_password=.*/SETPWD_password='$HASH'/\" $CONF"
-        else
-          docker exec "$CONTAINER" bash -c "echo \"SETPWD_password='$HASH'\" >> $CONF"
-        fi
-        CHANGED=1
-      fi
+      enforce_setting "SETPWD_enable_password" "True"
+      enforce_setting "SETPWD_password" "'$HASH'"
+      enforce_setting "SCAN_SUBNETS" "$SUBNETS"
 
       echo $CHANGED
 
-- name: Enforce NetAlertX SETPWD auth settings
-  ansible.builtin.shell: sg docker -c 'bash /tmp/netalertx-setpwd.sh'
-  register: _setpwd_result
-  changed_when: _setpwd_result.stdout | trim == '1'
+- name: Enforce NetAlertX settings in app.conf
+  ansible.builtin.shell: sg docker -c 'bash /tmp/netalertx-enforce.sh'
+  register: _enforce_result
+  changed_when: _enforce_result.stdout | trim == '1'
 
-- name: Remove SETPWD enforcement script
+- name: Remove enforcement script
   ansible.builtin.file:
-    path: /tmp/netalertx-setpwd.sh
+    path: /tmp/netalertx-enforce.sh
     state: absent
 
-- name: Restart NetAlertX to apply auth settings
+- name: Restart NetAlertX to apply settings
   ansible.builtin.shell: sg docker -c 'docker restart {{ netalertx_container_name }}'
-  when: _setpwd_result is changed
+  when: _enforce_result is changed
