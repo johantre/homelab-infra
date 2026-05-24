@@ -26,7 +26,7 @@ ha_user_username: "{{ lookup('env', 'HA_USER_USERNAME') }}"
 ha_user_password: "{{ lookup('env', 'HA_USER_PASSWORD') }}"
 ha_bootstrap_enable: true
 ha_container_name: homeassistant_ansible
-ha_seedbox_network: "192.168.3.0/24"
+ha_seedbox_network: "{{ nanopirouter_lan_network }}"
 ha_backup_encrypt_key: "{{ lookup('env', 'HA_BACKUP_ENCRYPT_KEY') }}"
 ha_long_lived_token: "{{ lookup('env', 'HA_LONG_LIVED_TOKEN_GH_ACTIONS_GIT_SYNC') }}"
 ha_network_mode: host
@@ -185,7 +185,7 @@ pihole_container_name: pihole_ansible
 pihole_host_port_http: 80
 pihole_host_port_https: 443
 pihole_host_port_dns: 53
-pihole_seedbox_network: "192.168.3.0/24"
+pihole_seedbox_network: "{{ nanopirouter_lan_network }}"
 pihole_web_password: "{{ lookup('env', 'PIHOLE_WEB_PASSWORD') }}"
 
 # --- NetAlertX
