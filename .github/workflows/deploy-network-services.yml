@@ -240,8 +240,10 @@ jobs:
           echo "NetAlertX web UI: http://$(hostname -I | awk '{print $1}'):20211"
           echo "DNS server: $(hostname -I | awk '{print $1}'):53"
           echo ""
-          echo "Running containers:"
-          sg docker -c 'docker ps --filter "label=com.docker.compose.project=pihole-stack-ansible" --format "table {{.Names}}\t{{.Status}}"' || echo "Could not list containers"
+          PIHOLE_STATUS=$(sg docker -c 'docker ps --filter "name=pihole_ansible" --format "{{.Status}}"')
+          NETALERTX_STATUS=$(sg docker -c 'docker ps --filter "name=netalertx_ansible" --format "{{.Status}}"')
+          echo "PiHole:    ${PIHOLE_STATUS:-DOWN}"
+          echo "NetAlertX: ${NETALERTX_STATUS:-DOWN}"
           echo ""
 
           if [[ "${{ job.status }}" == "success" ]]; then

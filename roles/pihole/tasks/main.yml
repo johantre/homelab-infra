@@ -88,7 +88,6 @@
     path: "{{ item }}"
     state: directory
     mode: "0755"
-  become: true
   loop:
     - "{{ netalertx_data_dir }}"
     - "{{ netalertx_config_dir }}"
@@ -109,14 +108,6 @@
     state: touch
     mode: "0644"
   changed_when: false
-
-# Render NetAlertX app.conf (always - sets password and enables auth)
-- name: Render NetAlertX app.conf
-  ansible.builtin.template:
-    src: "netalertx-app.conf.j2"
-    dest: "{{ netalertx_config_dir }}/app.conf"
-    mode: "0644"
-  become: true
 
 # Render docker-compose (always)
 - name: Render docker-compose
