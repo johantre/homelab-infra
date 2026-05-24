@@ -50,6 +50,13 @@
       - pihole_web_password | length > 0
     fail_msg: "❌ Missing PIHOLE_WEB_PASSWORD (required for PiHole admin interface). ❌"
 
+- name: Assert NETALERTX_APP_PASSWORD present
+  no_log: true
+  ansible.builtin.assert:
+    that:
+      - netalertx_app_password | length > 0
+    fail_msg: "❌ Missing NETALERTX_APP_PASSWORD (required for NetAlertX web interface). ❌"
+
 - name: Validate all critical pihole variables are defined
   ansible.builtin.assert:
     that:

@@ -82,6 +82,7 @@
   loop:
     - "{{ pihole_stack_dir }}"
     - "{{ pihole_etc_dir }}"
+    - "{{ netalertx_data_dir }}"
 
 - name: Ensure PiHole backup directory exists on host
   ansible.builtin.file:
@@ -116,6 +117,7 @@
     chdir: "{{ pihole_stack_dir }}"
   environment:
     PIHOLE_WEB_PASSWORD: "{{ pihole_web_password }}"
+    NETALERTX_APP_PASSWORD: "{{ netalertx_app_password }}"
   register: compose_up
   changed_when: false
 

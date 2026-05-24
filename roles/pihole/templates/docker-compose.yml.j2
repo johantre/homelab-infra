@@ -31,3 +31,19 @@ services:
       timeout: 10s
       retries: 3
       start_period: 60s
+
+  netalertx:
+    image: ghcr.io/jokob-sk/netalertx:{{ netalertx_version }}
+    container_name: {{ netalertx_container_name }}
+    network_mode: host
+    environment:
+      TZ: "{{ tz }}"
+      SCAN_SUBNETS: "{{ netalertx_scan_subnets }}"
+      APP_PASS: "${NETALERTX_APP_PASSWORD}"
+    volumes:
+      - "{{ netalertx_data_dir }}:/app/db"
+      - "/etc/localtime:/etc/localtime:ro"
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    restart: unless-stopped

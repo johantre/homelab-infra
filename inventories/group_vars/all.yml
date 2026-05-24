@@ -160,6 +160,7 @@ nanopirouter_modbus_hosts:
 # Modbus whitelist — mogen het .4.0/24 segment bereiken
 nanopirouter_modbus_whitelist:
   - "192.168.3.8"   # homeassistant
+  - "192.168.3.11"  # pihole
   - "192.168.3.28"  # windows-laptop
   - "192.168.3.41"  # linux box
   - "192.168.3.50"  # pixel8pro
@@ -186,3 +187,12 @@ pihole_host_port_https: 443
 pihole_host_port_dns: 53
 pihole_seedbox_network: "192.168.3.0/24"
 pihole_web_password: "{{ lookup('env', 'PIHOLE_WEB_PASSWORD') }}"
+
+# --- NetAlertX
+netalertx_version: "latest"
+netalertx_container_name: netalertx_ansible
+netalertx_port: 20211
+netalertx_data_dir: "{{ pihole_stack_dir }}/data/netalertx"
+netalertx_lan_interface: "eth0"
+netalertx_scan_subnets: "192.168.3.0/24 --interface={{ netalertx_lan_interface }}"
+netalertx_app_password: "{{ lookup('env', 'NETALERTX_APP_PASSWORD') }}"
