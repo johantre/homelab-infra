@@ -57,12 +57,22 @@
   changed_when: true
   ignore_errors: true
 
-- name: Restore gravity.db
-  ansible.builtin.copy:
-    src: /tmp/pihole-restore/gravity.db
-    dest: "{{ pihole_etc_dir }}/gravity.db"
-    remote_src: true
-    mode: "0644"
+- name: Restore gravity.db via Python sqlite3 backup API
+  ansible.builtin.shell: |
+    python3 -c "
+    import sqlite3, os
+    src = sqlite3.connect('/tmp/pihole-restore/gravity.db')
+    src.execute('PRAGMA wal_checkpoint(TRUNCATE)')
+    for f in ['{{ pihole_etc_dir }}/gravity.db', '{{ pihole_etc_dir }}/gravity.db-wal', '{{ pihole_etc_dir }}/gravity.db-shm']:
+        if os.path.exists(f):
+            os.remove(f)
+    dst = sqlite3.connect('{{ pihole_etc_dir }}/gravity.db')
+    src.backup(dst)
+    dst.close()
+    src.close()
+    "
+    chmod 644 {{ pihole_etc_dir }}/gravity.db
+  changed_when: true
 
 - name: Check if pihole.toml exists in backup
   ansible.builtin.stat:
@@ -86,6 +96,7 @@
   ansible.builtin.uri:
     url: "http://localhost:{{ pihole_host_port_http }}/admin/"
     status_code: [200, 301, 302]
+    timeout: 5
   register: pihole_ping
   retries: 30
   delay: 2
