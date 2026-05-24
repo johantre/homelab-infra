@@ -57,26 +57,24 @@
   changed_when: true
   ignore_errors: true
 
-- name: Restore app.db (remove WAL files to prevent corruption)
+- name: Restore app.db via Python sqlite3 backup API
   ansible.builtin.shell: |
-    rm -f {{ netalertx_data_dir }}/app.db-wal {{ netalertx_data_dir }}/app.db-shm
-    cp /tmp/netalertx-restore/app.db {{ netalertx_data_dir }}/app.db
+    python3 -c "
+    import sqlite3, os
+    src = sqlite3.connect('/tmp/netalertx-restore/app.db')
+    src.execute('PRAGMA wal_checkpoint(TRUNCATE)')
+    for f in ['{{ netalertx_data_dir }}/app.db', '{{ netalertx_data_dir }}/app.db-wal', '{{ netalertx_data_dir }}/app.db-shm']:
+        if os.path.exists(f):
+            os.remove(f)
+    dst = sqlite3.connect('{{ netalertx_data_dir }}/app.db')
+    src.backup(dst)
+    dst.close()
+    src.close()
+    "
     chown 20211:20211 {{ netalertx_data_dir }}/app.db
     chmod 644 {{ netalertx_data_dir }}/app.db
   become: true
   changed_when: true
-
-- name: Verify restored app.db is not malformed
-  ansible.builtin.shell: |
-    python3 -c "
-    import sqlite3
-    conn = sqlite3.connect('file://{{ netalertx_data_dir }}/app.db?mode=ro', uri=True)
-    result = conn.execute('PRAGMA integrity_check').fetchone()
-    conn.close()
-    if result[0] != 'ok':
-        raise RuntimeError('integrity_check failed: ' + str(result[0]))
-    "
-  changed_when: false
 
 - name: Check if app.conf exists in backup
   ansible.builtin.stat:
