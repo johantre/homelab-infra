@@ -196,6 +196,6 @@ netalertx_port: 20211
 netalertx_data_dir: "{{ pihole_stack_dir }}/data/netalertx/db"
 netalertx_config_dir: "{{ pihole_stack_dir }}/data/netalertx/config"
 netalertx_lan_interface: "eth0"
-netalertx_scan_subnets: "['{{ nanopirouter_lan_network }} --interface={{ netalertx_lan_interface }}', '{{ nanopirouter_modbus_network }} --interface={{ netalertx_lan_interface }}']"
+netalertx_scan_subnets: "['{{ nanopirouter_lan_network }} --interface={{ netalertx_lan_interface }}']"
 netalertx_loaded_plugins: "['ARPSCAN', 'NEWDEV', 'SETPWD', 'UI', 'NTFPRCS', 'DBCLNP', 'VNDRPDT']"
 netalertx_app_password: "{{ lookup('env', 'NETALERTX_APP_PASSWORD') }}"
