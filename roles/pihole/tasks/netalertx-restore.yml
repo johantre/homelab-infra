@@ -58,14 +58,24 @@
   ignore_errors: true
 
 - name: Restore app.db
-  ansible.builtin.copy:
-    src: /tmp/netalertx-restore/app.db
-    dest: "{{ netalertx_data_dir }}/app.db"
-    remote_src: true
-    owner: "20211"
-    group: "20211"
-    mode: "0644"
+  ansible.builtin.shell: |
+    cp /tmp/netalertx-restore/app.db {{ netalertx_data_dir }}/app.db
+    chown 20211:20211 {{ netalertx_data_dir }}/app.db
+    chmod 644 {{ netalertx_data_dir }}/app.db
   become: true
+  changed_when: true
+
+- name: Verify restored app.db is not malformed
+  ansible.builtin.shell: |
+    python3 -c "
+    import sqlite3
+    conn = sqlite3.connect('file://{{ netalertx_data_dir }}/app.db?mode=ro', uri=True)
+    result = conn.execute('PRAGMA integrity_check').fetchone()
+    conn.close()
+    if result[0] != 'ok':
+        raise RuntimeError('integrity_check failed: ' + str(result[0]))
+    "
+  changed_when: false
 
 - name: Check if app.conf exists in backup
   ansible.builtin.stat:
@@ -73,14 +83,12 @@
   register: netalertx_appconf_stat
 
 - name: Restore app.conf
-  ansible.builtin.copy:
-    src: /tmp/netalertx-restore/app.conf
-    dest: "{{ netalertx_config_dir }}/app.conf"
-    remote_src: true
-    owner: "20211"
-    group: "20211"
-    mode: "0644"
+  ansible.builtin.shell: |
+    cp /tmp/netalertx-restore/app.conf {{ netalertx_config_dir }}/app.conf
+    chown 20211:20211 {{ netalertx_config_dir }}/app.conf
+    chmod 644 {{ netalertx_config_dir }}/app.conf
   become: true
+  changed_when: true
   when: netalertx_appconf_stat.stat.exists
 
 - name: Start NetAlertX container after restore
@@ -92,6 +100,7 @@
   ansible.builtin.uri:
     url: "http://localhost:{{ netalertx_port }}/"
     status_code: [200, 301, 302]
+    timeout: 5
   register: netalertx_ping
   retries: 30
   delay: 2
