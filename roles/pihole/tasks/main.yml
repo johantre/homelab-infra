@@ -239,10 +239,43 @@
     - not restore_completed | default(false)
 
 # Summary of what happened
-- name: Deployment summary
+- name: PiHole deployment summary
   ansible.builtin.debug:
     msg: >-
-      {{ '🔧 Maintenance deploy completed - docker-compose updated'
+      {{ '🔧 PiHole maintenance deploy completed'
          if (maintenance_mode | default(false) | bool)
-         else ('✅ DR restore completed successfully' if restore_completed | default(false) else '🆕 Fresh install - bootstrap ran') }}
+         else ('✅ PiHole DR restore completed successfully' if restore_completed | default(false) else '🆕 PiHole fresh install - bootstrap ran') }}
+  when: "'pihole_target' in group_names"
+
+# ============================================================================
+# NETALERTX DISASTER RECOVERY LOGIC
+# ============================================================================
+
+- name: "═══════════════════════════════════════════════════════════════════"
+  ansible.builtin.debug:
+    msg: "{{ '🔧 NetAlertX MAINTENANCE MODE' if (maintenance_netalertx | default(true) | bool) else '🔄 NetAlertX DISASTER RECOVERY MODE' }}"
+  when: "'pihole_target' in group_names"
+
+- name: Check for backups in netalertx backup dir
+  ansible.builtin.find:
+    paths: "{{ netalertx_backup_dir }}"
+    patterns: "netalertx-backup-*.tar.gz"
+  register: available_netalertx_backups
+  when:
+    - "'pihole_target' in group_names"
+    - not (maintenance_netalertx | default(true) | bool)
+
+- name: Restore NetAlertX from local backup
+  ansible.builtin.include_tasks: netalertx-restore.yml
+  when:
+    - "'pihole_target' in group_names"
+    - not (maintenance_netalertx | default(true) | bool)
+    - available_netalertx_backups.matched > 0
+
+- name: NetAlertX deployment summary
+  ansible.builtin.debug:
+    msg: >-
+      {{ '🔧 NetAlertX maintenance deploy completed'
+         if (maintenance_netalertx | default(true) | bool)
+         else ('✅ NetAlertX DR restore completed' if (available_netalertx_backups.matched | default(0)) > 0 else '🆕 NetAlertX fresh install - no backup available') }}
   when: "'pihole_target' in group_names"

@@ -11,22 +11,22 @@ on:
         options:
           - prod
           - dev
-      maintenance_mode:
-        description: 'Maintenance mode (skip backup restore, config from Git only)'
+      maintenance_pihole:
+        description: 'PiHole maintenance mode (true = behoud data, false = restore uit backup)'
         required: false
         default: 'true'
         type: choice
         options:
           - 'true'
           - 'false'
-      reset_netalertx:
-        description: 'Wipe NetAlertX database and config (fresh start)'
+      maintenance_netalertx:
+        description: 'NetAlertX maintenance mode (true = behoud data, false = restore uit backup)'
         required: false
-        default: 'false'
+        default: 'true'
         type: choice
         options:
-          - 'false'
           - 'true'
+          - 'false'
 
 jobs:
   deploy-network-services:
@@ -126,35 +126,25 @@ jobs:
             echo "ℹ️  No existing stack found (this is OK)"
           fi
 
-      - name: Reset NetAlertX data (fresh start)
-        if: ${{ github.event.inputs.reset_netalertx == 'true' }}
+      - name: Clean up data per service
         run: |
-          echo "Wiping NetAlertX database and config..."
-          sudo rm -rf "$HOME/homelab/target/pihole-stack-ansible/data/netalertx"
-          echo "Done — NetAlertX will initialize fresh on next deploy"
-
-      - name: Clean up existing deployment
-        run: |
-          MAINTENANCE_MODE="${{ github.event.inputs.maintenance_mode || 'true' }}"
+          MAINTENANCE_PIHOLE="${{ github.event.inputs.maintenance_pihole || 'true' }}"
+          MAINTENANCE_NETALERTX="${{ github.event.inputs.maintenance_netalertx || 'true' }}"
 
           echo "═══════════════════════════════════════════════════════════════════"
-          if [[ "$MAINTENANCE_MODE" == "true" ]]; then
-            echo "🔧 MAINTENANCE MODE - preserving runtime state"
-          else
-            echo "🔄 DISASTER RECOVERY MODE - full cleanup (backup/seedbox will restore)"
+          echo "PiHole:    $( [[ "$MAINTENANCE_PIHOLE"    == 'true' ]] && echo '🔧 MAINTENANCE' || echo '🔄 DR - data wissen')"
+          echo "NetAlertX: $( [[ "$MAINTENANCE_NETALERTX" == 'true' ]] && echo '🔧 MAINTENANCE' || echo '🔄 DR - data wissen')"
+          echo "═══════════════════════════════════════════════════════════════════"
+
+          if [[ "$MAINTENANCE_PIHOLE" != "true" ]]; then
+            sudo rm -rf "$HOME/homelab/target/pihole-stack-ansible/data/pihole-etc"
+            sudo rm -rf "$HOME/homelab/target/pihole-stack-ansible/data/dnsmasq-etc"
+            echo "✅ PiHole data gewist"
           fi
-          echo "═══════════════════════════════════════════════════════════════════"
 
-          if [[ "$MAINTENANCE_MODE" != "true" ]]; then
-            # DR MODE: Full cleanup - backup/seedbox restore will repopulate
-            if [[ -d "$HOME/homelab/target/pihole-stack-ansible" ]]; then
-              echo "Removing pihole-stack-ansible (DR mode)..."
-              sudo rm -rf "$HOME/homelab/target/pihole-stack-ansible"
-              echo "✅ Removed pihole-stack-ansible"
-            fi
-          else
-            # MAINTENANCE MODE: Preserve volumes, Ansible only updates compose file
-            echo "ℹ️  Keeping pihole-stack-ansible/ intact (volumes, config)"
+          if [[ "$MAINTENANCE_NETALERTX" != "true" ]]; then
+            sudo rm -rf "$HOME/homelab/target/pihole-stack-ansible/data/netalertx"
+            echo "✅ NetAlertX data gewist"
           fi
 
           echo "✅ Cleanup complete"
@@ -167,7 +157,7 @@ jobs:
           PIHOLE_WEB_PASSWORD: ${{ secrets.PIHOLE_WEB_PASSWORD }}
           NETALERTX_APP_PASSWORD: ${{ secrets.NETALERTX_APP_PASSWORD }}
         run: |
-          echo "🚀 Starting PiHole deployment..."
+          echo "🚀 Starting deployment..."
 
           cd $GITHUB_WORKSPACE
 
@@ -177,7 +167,8 @@ jobs:
           ansible-playbook \
             -i inventories/pihole_target_local.ini \
             deploy-pihole.yml \
-            -e maintenance_mode=${{ github.event.inputs.maintenance_mode || 'true' }} \
+            -e maintenance_mode=${{ github.event.inputs.maintenance_pihole || 'true' }} \
+            -e maintenance_netalertx=${{ github.event.inputs.maintenance_netalertx || 'true' }} \
             -e config_repo_path=$GITHUB_WORKSPACE/config-repo \
             -vv \
             2>&1 | tee ansible-deploy-network-services.log
@@ -223,7 +214,6 @@ jobs:
 
           echo "✅ NetAlertX container is running"
 
-          # Check if web UI is responding (wait max 90 seconds)
           echo "Waiting for PiHole web UI to be ready..."
           for i in {1..18}; do
             if curl -f -s "http://localhost:80/admin/" > /dev/null 2>&1; then

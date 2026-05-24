@@ -1,0 +1,115 @@
+---
+# NetAlertX backup restore - restore from local tar.gz backup
+#
+# Backup format: tar.gz containing:
+#   ./app.db    → device database (names, icons, parent connections, history)
+#   ./app.conf  → application configuration (plugins, schedules, auth)
+#
+# Restores both files while container is stopped, then re-enforces SETPWD auth.
+
+- name: Find all backups in netalertx backup directory
+  ansible.builtin.find:
+    paths: "{{ netalertx_backup_dir }}"
+    patterns: "netalertx-backup-*.tar.gz"
+    file_type: file
+  register: netalertx_backup_files
+
+- name: Fail if no backups found
+  ansible.builtin.fail:
+    msg: "No backup files found in {{ netalertx_backup_dir }}"
+  when: netalertx_backup_files.matched == 0
+
+- name: Select newest backup
+  ansible.builtin.set_fact:
+    netalertx_latest_backup: "{{ netalertx_backup_files.files | sort(attribute='mtime', reverse=True) | first }}"
+
+- name: Show selected backup
+  ansible.builtin.debug:
+    msg:
+      - "Selected backup: {{ netalertx_latest_backup.path | basename }}"
+      - "Size: {{ (netalertx_latest_backup.size / 1024 / 1024) | round(2) }} MB"
+
+- name: Create temporary restore directory
+  ansible.builtin.file:
+    path: /tmp/netalertx-restore
+    state: directory
+    mode: "0700"
+
+- name: Extract backup archive
+  ansible.builtin.unarchive:
+    src: "{{ netalertx_latest_backup.path }}"
+    dest: /tmp/netalertx-restore/
+    remote_src: true
+
+- name: Verify app.db exists in backup
+  ansible.builtin.stat:
+    path: /tmp/netalertx-restore/app.db
+  register: netalertx_appdb_stat
+
+- name: Fail if app.db missing in backup
+  ansible.builtin.fail:
+    msg: "app.db not found in backup {{ netalertx_latest_backup.path | basename }}"
+  when: not netalertx_appdb_stat.stat.exists
+
+- name: Stop NetAlertX container before restore
+  ansible.builtin.shell: |
+    sg docker -c 'docker stop {{ netalertx_container_name }}'
+  changed_when: true
+  ignore_errors: true
+
+- name: Restore app.db
+  ansible.builtin.copy:
+    src: /tmp/netalertx-restore/app.db
+    dest: "{{ netalertx_data_dir }}/app.db"
+    remote_src: true
+    owner: "20211"
+    group: "20211"
+    mode: "0644"
+  become: true
+
+- name: Check if app.conf exists in backup
+  ansible.builtin.stat:
+    path: /tmp/netalertx-restore/app.conf
+  register: netalertx_appconf_stat
+
+- name: Restore app.conf
+  ansible.builtin.copy:
+    src: /tmp/netalertx-restore/app.conf
+    dest: "{{ netalertx_config_dir }}/app.conf"
+    remote_src: true
+    owner: "20211"
+    group: "20211"
+    mode: "0644"
+  become: true
+  when: netalertx_appconf_stat.stat.exists
+
+- name: Start NetAlertX container after restore
+  ansible.builtin.shell: |
+    sg docker -c 'docker start {{ netalertx_container_name }}'
+  changed_when: true
+
+- name: Wait for NetAlertX web interface to come up
+  ansible.builtin.uri:
+    url: "http://localhost:{{ netalertx_port }}/"
+    status_code: [200, 301, 302]
+  register: netalertx_ping
+  retries: 30
+  delay: 2
+  until: netalertx_ping.status in [200, 301, 302]
+  ignore_errors: true
+
+- name: Re-enforce SETPWD auth after restore
+  ansible.builtin.include_tasks: netalertx-auth.yml
+
+- name: Backup restore summary
+  ansible.builtin.debug:
+    msg:
+      - "NetAlertX backup restored from {{ netalertx_latest_backup.path | basename }}"
+      - "   app.db → {{ netalertx_data_dir }}"
+      - "   app.conf → {{ netalertx_config_dir }}"
+
+- name: Remove temporary restore directory
+  ansible.builtin.file:
+    path: /tmp/netalertx-restore
+    state: absent
+  failed_when: false
