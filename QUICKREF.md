@@ -216,6 +216,47 @@ docker logs homeassistant_ansible
 | No seedbox found | Check seedbox is running: `nmap -p 8123 192.168.3.0/24` |
 | Bootstrap didn't run | Restore succeeded (check Ansible output) |
 
+## 🔗 NetAlertX DHCP Lease Sync
+
+NetAlertX haalt de dnsmasq lease file van de NanoPi router op via een restricted SSH key.
+De key kan **uitsluitend** `cat /var/lib/misc/dnsmasq.leases` uitvoeren — geen shell, geen andere commando's.
+
+**Architectuur:**
+```
+NanoPi (192.168.3.1)                 PiHole (192.168.3.11)
+  authorized_keys:                     ~/.ssh/id_ed25519_lease_sync (private key)
+    command="cat ...leases",restrict   systemd timer: elke 5 min SSH pull
+    <public key>                       → ~/homelab/target/.../dnsmasq-nanopi.leases
+                                       → gemount in NetAlertX container als
+                                         /etc/dnsmasq/dhcp.leases (read-only)
+                                       NetAlertX DHCPLSS plugin: elke 5 min
+```
+
+**Vereist GitHub secret (infra repo):**
+- `LEASE_SYNC_KEY_B64` — base64-encoded private key (zie `../.env`)
+
+**Deploy volgorde (bij eerste setup of key rotatie):**
+1. Deploy NanoPi eerst → voegt restricted public key toe aan authorized_keys
+2. Deploy PiHole/NetAlertX → deployt private key + start timer + configureert DHCPLSS plugin
+
+**Troubleshooting:**
+```bash
+# Timer status op PiHole:
+ssh ubuntu@192.168.3.11 "systemctl status netalertx-lease-sync.timer"
+
+# Laatste sync bekijken:
+ssh ubuntu@192.168.3.11 "journalctl -u netalertx-lease-sync.service -n 20"
+
+# Manueel triggeren:
+ssh ubuntu@192.168.3.11 "systemctl start netalertx-lease-sync.service"
+
+# Lease file controleren op PiHole:
+ssh ubuntu@192.168.3.11 "cat ~/homelab/target/pihole-stack-ansible/data/dnsmasq-nanopi.leases"
+
+# SSH restrictie testen (moet lease file outputten, geen shell):
+ssh -i ~/.ssh/id_ed25519_lease_sync ubuntu@192.168.3.1
+```
+
 ## 💡 Pro Tips
 
 ```bash
