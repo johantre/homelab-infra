@@ -18,6 +18,7 @@
     ssh_priv_key_b64: "{{ ssh_priv_key_b64 | default(lookup('env','SSH_PRIV_KEY_B64'), true) }}"
     pihole_web_password: "{{ pihole_web_password | default(lookup('env','PIHOLE_WEB_PASSWORD'), true) }}"
     config_repo_path: "{{ config_repo_path | default(lookup('env','CONFIG_REPO_PATH'), true) }}"
+    lease_sync_key_b64: "{{ lease_sync_key_b64 | default(lookup('env','LEASE_SYNC_KEY_B64'), true) }}"
   when: env_file is not defined
 
 - name: Assert GitHub tokens present
@@ -56,6 +57,14 @@
     that:
       - netalertx_app_password | length > 0
     fail_msg: "❌ Missing NETALERTX_APP_PASSWORD (required for NetAlertX web interface). ❌"
+
+- name: Assert LEASE_SYNC_KEY_B64 present
+  no_log: true
+  ansible.builtin.assert:
+    that:
+      - lease_sync_key_b64 | length > 0
+    fail_msg: "❌ Missing LEASE_SYNC_KEY_B64 (required for NetAlertX DHCP lease sync). Add as GitHub secret. ❌"
+  when: ansible_connection == 'local'
 
 - name: Validate all critical pihole variables are defined
   ansible.builtin.assert:

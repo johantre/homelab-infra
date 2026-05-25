@@ -1,0 +1,21 @@
+---
+# Allow PiHole to pull the dnsmasq lease file via SSH with a restricted key.
+# The forced command ensures the key can ONLY output the lease file — no shell access.
+
+- name: Ensure .ssh directory exists for ubuntu user
+  ansible.builtin.file:
+    path: /home/ubuntu/.ssh
+    state: directory
+    mode: "0700"
+    owner: ubuntu
+    group: ubuntu
+
+- name: Add restricted lease-sync public key to authorized_keys
+  ansible.builtin.lineinfile:
+    path: /home/ubuntu/.ssh/authorized_keys
+    line: 'command="cat /var/lib/misc/dnsmasq.leases",restrict {{ netalertx_lease_sync_pubkey }}'
+    regexp: 'netalertx-lease-sync'
+    create: true
+    mode: "0600"
+    owner: ubuntu
+    group: ubuntu

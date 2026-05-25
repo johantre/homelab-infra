@@ -34,6 +34,9 @@
 - name: Configure WireGuard VPN
   ansible.builtin.include_tasks: wireguard.yml
 
+- name: Configure lease sync access for NetAlertX
+  ansible.builtin.include_tasks: lease-sync.yml
+
 - name: OS updates (opt-in via tags)
   include_tasks:
     file: os-update.yml

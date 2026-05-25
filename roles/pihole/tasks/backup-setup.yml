@@ -14,6 +14,44 @@
     update_cache: false
   become: true
 
+- name: Deploy lease sync SSH private key
+  ansible.builtin.copy:
+    content: "{{ lease_sync_key_b64 | b64decode }}"
+    dest: "{{ ansible_env.HOME }}/.ssh/id_ed25519_lease_sync"
+    mode: "0600"
+  no_log: true
+
+- name: Add NanoPi host key to known_hosts
+  ansible.builtin.known_hosts:
+    name: "{{ nanopirouter_lan_ip }}"
+    key: "{{ lookup('pipe', 'ssh-keyscan -t ed25519 ' + nanopirouter_lan_ip + ' 2>/dev/null') }}"
+    path: "{{ ansible_env.HOME }}/.ssh/known_hosts"
+    state: present
+
+- name: Create lease file placeholder (required before container starts)
+  ansible.builtin.file:
+    path: "{{ netalertx_leases_host_path }}"
+    state: touch
+    mode: "0644"
+    modification_time: preserve
+    access_time: preserve
+
+- name: Deploy netalertx-lease-sync.service
+  ansible.builtin.template:
+    src: netalertx-lease-sync.service.j2
+    dest: /etc/systemd/system/netalertx-lease-sync.service
+    mode: "0644"
+  become: true
+  notify: reload systemd
+
+- name: Deploy netalertx-lease-sync.timer
+  ansible.builtin.copy:
+    src: netalertx-lease-sync.timer
+    dest: /etc/systemd/system/netalertx-lease-sync.timer
+    mode: "0644"
+  become: true
+  notify: reload systemd
+
 - name: Deploy pihole-backup.sh
   ansible.builtin.template:
     src: pihole-backup.sh.j2
@@ -95,6 +133,14 @@
 - name: Enable and start netalertx-config-watch.path
   ansible.builtin.systemd:
     name: netalertx-config-watch.path
+    enabled: true
+    state: started
+    daemon_reload: false
+  become: true
+
+- name: Enable and start netalertx-lease-sync.timer
+  ansible.builtin.systemd:
+    name: netalertx-lease-sync.timer
     enabled: true
     state: started
     daemon_reload: false

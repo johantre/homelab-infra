@@ -1,0 +1,15 @@
+[Unit]
+Description=Fetch dnsmasq lease file from NanoPi router for NetAlertX
+After=network.target
+
+[Service]
+Type=oneshot
+User={{ ansible_user }}
+ExecStart=/bin/bash -c '\
+  ssh \
+    -i {{ ansible_env.HOME }}/.ssh/id_ed25519_lease_sync \
+    -o BatchMode=yes \
+    -o ConnectTimeout=10 \
+    ubuntu@{{ nanopirouter_lan_ip }} \
+    > {{ netalertx_leases_host_path }}.tmp \
+  && mv {{ netalertx_leases_host_path }}.tmp {{ netalertx_leases_host_path }}'

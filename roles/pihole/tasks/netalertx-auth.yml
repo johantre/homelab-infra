@@ -75,6 +75,37 @@
   become: true
   register: _digscan_result
 
+- name: Enforce DHCPLSS_RUN in NetAlertX app.conf
+  ansible.builtin.lineinfile:
+    path: "{{ netalertx_config_dir }}/app.conf"
+    regexp: '^DHCPLSS_RUN='
+    line: "DHCPLSS_RUN='schedule'"
+  become: true
+  register: _dhcplss_run_result
+
+- name: Enforce DHCPLSS_RUN_SCHD in NetAlertX app.conf
+  ansible.builtin.lineinfile:
+    path: "{{ netalertx_config_dir }}/app.conf"
+    regexp: '^DHCPLSS_RUN_SCHD='
+    line: "DHCPLSS_RUN_SCHD='*/5 * * * *'"
+  become: true
+  register: _dhcplss_schd_result
+
+- name: Enforce DHCPLSS_paths_to_check in NetAlertX app.conf
+  ansible.builtin.lineinfile:
+    path: "{{ netalertx_config_dir }}/app.conf"
+    regexp: '^DHCPLSS_paths_to_check='
+    line: "DHCPLSS_paths_to_check=['/etc/dnsmasq/dhcp.leases']"
+  become: true
+  register: _dhcplss_paths_result
+
 - name: Restart NetAlertX to apply settings
   ansible.builtin.shell: sg docker -c 'docker restart {{ netalertx_container_name }}'
-  when: _setpwd_result is changed or _scan_subnets_result is changed or _avahiscan_result is changed or _digscan_result is changed
+  when: >
+    _setpwd_result is changed or
+    _scan_subnets_result is changed or
+    _avahiscan_result is changed or
+    _digscan_result is changed or
+    _dhcplss_run_result is changed or
+    _dhcplss_schd_result is changed or
+    _dhcplss_paths_result is changed

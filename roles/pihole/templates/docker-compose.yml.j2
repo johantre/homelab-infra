@@ -43,6 +43,7 @@ services:
     volumes:
       - "{{ netalertx_data_dir }}:/data/db"
       - "{{ netalertx_config_dir }}:/data/config"
+      - "{{ netalertx_leases_host_path }}:/etc/dnsmasq/dhcp.leases:ro"
       - "/etc/localtime:/etc/localtime:ro"
     cap_add:
       - NET_ADMIN

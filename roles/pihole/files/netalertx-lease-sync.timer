@@ -1,0 +1,10 @@
+[Unit]
+Description=Fetch NanoPi dnsmasq lease file for NetAlertX every 5 minutes
+
+[Timer]
+OnBootSec=60
+OnUnitActiveSec=5min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

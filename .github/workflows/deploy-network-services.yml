@@ -75,6 +75,7 @@ jobs:
           [[ -z "${{ secrets.PIHOLE_WEB_PASSWORD }}" ]] && MISSING_SECRETS+=("PIHOLE_WEB_PASSWORD")
           [[ -z "${{ secrets.NETALERTX_APP_PASSWORD }}" ]] && MISSING_SECRETS+=("NETALERTX_APP_PASSWORD")
           [[ -z "${{ secrets.SSH_PRIV_KEY_B64 }}" ]] && MISSING_SECRETS+=("SSH_PRIV_KEY_B64")
+          [[ -z "${{ secrets.LEASE_SYNC_KEY_B64 }}" ]] && MISSING_SECRETS+=("LEASE_SYNC_KEY_B64")
 
           if [[ ${#MISSING_SECRETS[@]} -gt 0 ]]; then
             echo "❌ CRITICAL: Missing secrets: ${MISSING_SECRETS[*]}"
@@ -156,6 +157,7 @@ jobs:
           SSH_PRIV_KEY_B64: ${{ secrets.SSH_PRIV_KEY_B64 }}
           PIHOLE_WEB_PASSWORD: ${{ secrets.PIHOLE_WEB_PASSWORD }}
           NETALERTX_APP_PASSWORD: ${{ secrets.NETALERTX_APP_PASSWORD }}
+          LEASE_SYNC_KEY_B64: ${{ secrets.LEASE_SYNC_KEY_B64 }}
         run: |
           echo "🚀 Starting deployment..."
 
