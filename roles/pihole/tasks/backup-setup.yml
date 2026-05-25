@@ -28,11 +28,26 @@
     path: "{{ ansible_env.HOME }}/.ssh/known_hosts"
     state: present
 
+- name: Stat lease file path
+  ansible.builtin.stat:
+    path: "{{ netalertx_leases_host_path }}"
+  register: _lease_path_stat
+  become: true
+
+- name: Remove lease path if it is a directory (Docker artefact)
+  ansible.builtin.file:
+    path: "{{ netalertx_leases_host_path }}"
+    state: absent
+  become: true
+  when: _lease_path_stat.stat.exists and _lease_path_stat.stat.isdir
+
 - name: Create lease file placeholder (required before container starts)
   ansible.builtin.file:
     path: "{{ netalertx_leases_host_path }}"
     state: touch
     mode: "0644"
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
     modification_time: preserve
     access_time: preserve
   become: true
