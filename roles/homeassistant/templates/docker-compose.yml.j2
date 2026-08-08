@@ -5,6 +5,12 @@ services:
     user: "{{ runtime_uid }}:{{ runtime_gid }}"
     privileged: true
     restart: unless-stopped
+    environment:
+      # runtime_uid has no /etc/passwd entry in the image, so HOME falls back
+      # to "/" (root-owned, not writable) unless set explicitly. That breaks
+      # pip user-installs for custom integration requirements (e.g. HACS
+      # integrations needing extra pip packages).
+      - HOME=/config
     volumes:
       - "{{ ha_config_dir }}:/config"
       - "/etc/localtime:/etc/localtime:ro"
