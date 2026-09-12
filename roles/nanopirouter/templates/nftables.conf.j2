@@ -17,6 +17,14 @@ define MODBUS_WHITELIST = {
 {% endfor %}
 }
 
+# LAN sources with no forward/internet access (isolated on purpose)
+define LAN_BLOCKED = {
+{% for ip in nanopirouter_lan_blocked_ips %}
+    {{ ip }}{% if not loop.last %},{% endif %}
+
+{% endfor %}
+}
+
 table inet filter {
 
     chain input {
@@ -52,6 +60,9 @@ table inet filter {
 
         # Established/related always allowed
         ct state established,related accept
+
+        # Isolated LAN sources: drop before the general LAN → WAN accept
+        ip saddr $LAN_BLOCKED drop
 
         # LAN → WAN (internet access)
         iifname $LAN oifname $WAN accept

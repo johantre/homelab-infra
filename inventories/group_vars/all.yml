@@ -129,6 +129,9 @@ nanopirouter_dhcp_reservations:
   - name: windows-laptop
     mac: "a8:3b:76:e6:d8:65"
     ip: "192.168.3.28"
+  - name: thinkpad-x1-jo
+    mac: "88:f4:da:2a:65:2a"
+    ip: "192.168.3.178"
   - name: pixel8pro
     mac: "94:45:60:3c:50:2c"
     ip: "192.168.3.50"
@@ -159,12 +162,19 @@ nanopirouter_modbus_hosts:
 
 # Modbus whitelist — mogen het .4.0/24 segment bereiken
 nanopirouter_modbus_whitelist:
-  - "192.168.3.8"   # homeassistant
-  - "192.168.3.11"  # pihole
-  - "192.168.3.28"  # windows-laptop
-  - "192.168.3.41"  # linux box
-  - "192.168.3.50"  # pixel8pro
-  - "192.168.3.51"  # fp4
+  - "192.168.3.8"    # homeassistant
+  - "192.168.3.11"   # pihole
+  - "192.168.3.28"   # windows-laptop
+  - "192.168.3.41"   # linux box
+  - "192.168.3.50"   # pixel8pro
+  - "192.168.3.51"   # fp4
+  - "192.168.3.178"  # thinkpad-x1-jo
+
+# LAN-toestellen die geen internet-/forward-toegang mogen krijgen
+# (bv. een WiFi-pad dat we bewust laten verbinden zodat het toestel intern
+#  "connected" blijft, maar dat nergens naartoe mag routeren)
+nanopirouter_lan_blocked_ips:
+  - "192.168.3.137"  # omvormer-wifi (datalogger STA) — echte pad is bekabeld via Modbus (.4.3)
 
 # WireGuard
 nanopirouter_wg_interface: "wg0"
