@@ -150,7 +150,7 @@ nanopirouter_dhcp_reservations:
   - name: orbi-bedroom
     mac: "6c:cd:d6:29:b9:ce"
     ip: "192.168.3.4"
-  - name: orbi-kitchen
+  - name: orbi-utility
     mac: "34:98:b5:46:33:a9"
     ip: "192.168.3.5"
 
