@@ -309,7 +309,7 @@
 # ("Permission denied" removing root-owned dist-info) until this is fixed.
 - name: Fix non-root ownership of site-packages (custom integration pip installs)
   ansible.builtin.shell: |
-    sg docker -c 'docker exec -u root {{ ha_container_name }} chown -R {{ runtime_uid }}:{{ runtime_gid }} /usr/local/lib/python3*/site-packages'
+    sg docker -c "docker exec -u root {{ ha_container_name }} sh -c 'chown -R {{ runtime_uid }}:{{ runtime_gid }} /usr/local/lib/python3*/site-packages'"
   register: _siteperms_fix
   changed_when: true
   when: _ha_recreated
