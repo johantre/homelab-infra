@@ -1,22 +1,3 @@
-# Third-party apt signing keys (e.g. GitHub CLI) rotate/expire server-side.
-# A stale local keyring makes apt print an unverified-signature warning that
-# the apt module treats as a hard cache-update failure, breaking this whole
-# play. Refresh it unconditionally before updating the cache so rotation
-# never breaks the pipeline again.
-- name: Check if GitHub CLI apt source is configured
-  stat:
-    path: /etc/apt/sources.list.d/github-cli.list
-  register: _github_cli_source
-
-- name: Keep GitHub CLI apt signing key current
-  become: true
-  ansible.builtin.get_url:
-    url: https://cli.github.com/packages/githubcli-archive-keyring.gpg
-    dest: /usr/share/keyrings/githubcli-archive-keyring.gpg
-    mode: "0644"
-    force: true
-  when: _github_cli_source.stat.exists
-
 - name: Update apt cache
   become: true
   apt:
