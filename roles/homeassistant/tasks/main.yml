@@ -257,23 +257,28 @@
     dest: "{{ ha_stack_dir }}/docker-compose.yml"
     mode: "0644"
 
-# Optional: pull images & up -d when explicitly asked
-- name: Include containers update (opt-in via tags)
-  include_tasks: containers-update.yml
-  tags: [containers_update, ha_update]
-
-# Capture the HA container's identity before the (re)deploy. We can't detect
-# recreation from the compose command's own output below, because that task
-# is no_log (to keep CF_TUNNEL_TOKEN out of the logs) and Ansible's no_log
-# wipes the REGISTERED RESULT's content too, not just what gets displayed —
-# so parsing compose_up.stdout/stderr always silently evaluates to empty.
-# Comparing container IDs needs no secrets, so it isn't affected by no_log.
+# Capture the HA container's identity before the (re)deploy. This must happen
+# BEFORE "Include containers update" below, because that include has its own
+# "Docker compose up -d" (containers-update.yml) which, on a normal deploy
+# where the stack was stopped first (see deploy-ha.yml), is what actually
+# (re)creates the container — the "Bring up/update" task further down is a
+# no-op by the time it runs. We can't detect recreation from either compose
+# command's own output, because both are no_log (to keep CF_TUNNEL_TOKEN out
+# of the logs) and Ansible's no_log wipes the REGISTERED RESULT's content
+# too, not just what gets displayed — so parsing stdout/stderr always
+# silently evaluates to empty. Comparing container IDs needs no secrets, so
+# it isn't affected by no_log.
 - name: Capture HA container id before bring-up
   ansible.builtin.shell: |
     sg docker -c "docker inspect -f '{{ '{{.Id}}' }}' {{ ha_container_name }}"
   register: _ha_id_before
   changed_when: false
   failed_when: false
+
+# Optional: pull images & up -d when explicitly asked
+- name: Include containers update (opt-in via tags)
+  include_tasks: containers-update.yml
+  tags: [containers_update, ha_update]
 
 # Bring up/update the stack (CLI, no Python SDK required, using CF_TUNNEL_TOKEN as env var)
 - name: Bring up/update (no env file)
