@@ -274,6 +274,7 @@
   register: _ha_id_before
   changed_when: false
   failed_when: false
+  tags: [containers_update, ha_update]
 
 # Optional: pull images & up -d when explicitly asked
 - name: Include containers update (opt-in via tags)
@@ -297,15 +298,18 @@
   register: _ha_id_after
   changed_when: false
   failed_when: false
+  tags: [containers_update, ha_update]
 
 - name: Determine if HA container was (re)created this run
   ansible.builtin.set_fact:
     _ha_recreated: "{{ (_ha_id_before.stdout | default('')) != (_ha_id_after.stdout | default('')) }}"
+  tags: [containers_update, ha_update]
 
 - name: Mark task changed if the HA container was (re)created
   ansible.builtin.debug:
     msg: "Compose up ran."
   changed_when: _ha_recreated
+  tags: [containers_update, ha_update]
 
 # The official HA image ships site-packages owned by root, but the container
 # runs as runtime_uid (non-root hardening, see docker-compose.yml.j2). A fresh
@@ -318,12 +322,14 @@
   register: _siteperms_fix
   changed_when: true
   when: _ha_recreated
+  tags: [containers_update, ha_update]
 
 - name: Restart HA to retry failed custom-component requirement installs
   ansible.builtin.shell: |
     sg docker -c 'docker restart {{ ha_container_name }}'
   when: _ha_recreated and _siteperms_fix is succeeded
   changed_when: true
+  tags: [containers_update, ha_update]
 
 - name: Write HA port to artifact (for GitHub workflow verification)
   ansible.builtin.copy:
