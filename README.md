@@ -857,7 +857,7 @@ ssh root@<SEEDBOX_IP> "ls -la /root/homeassistant/.storage"
 
 **Reason:** The HA container runs as a non-root `runtime_uid` (security hardening, see `docker-compose.yml.j2`), but the official HA image ships `site-packages` owned by `root`. Every time the container is recreated, that ownership resets, so pip (running as non-root) can't replace a root-owned package file to install a new/updated requirement.
 
-**Fix:** Self-healing — `roles/homeassistant/tasks/main.yml` now chowns `site-packages` to `runtime_uid` and restarts HA whenever the container was (re)created, right after "Bring up/update". No manual action needed. If you still see this, check that task actually ran (`_ha_recreated` must have been true that run).
+**Fix:** Self-healing — `roles/homeassistant/tasks/main.yml` compares the HA container's ID before/after the bring-up sequence (which starts before `containers-update.yml`'s own compose-up, since that's where a stopped stack actually gets recreated) and, if it changed, chowns `site-packages` to `runtime_uid` and restarts HA so pending requirement installs retry. No manual action needed, including under `--tags ha_update`/`--tags containers_update`. If you still see this, check that the fix actually ran (`_ha_recreated` must have been `true` that run — grep the Ansible log for `"Determine if HA container was (re)created"`).
 
 #### 7. Ansible `apt` Task Fails but `apt-get update` Works Fine on the Host
 
