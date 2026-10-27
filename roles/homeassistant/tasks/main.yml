@@ -262,6 +262,19 @@
   include_tasks: containers-update.yml
   tags: [containers_update, ha_update]
 
+# Capture the HA container's identity before the (re)deploy. We can't detect
+# recreation from the compose command's own output below, because that task
+# is no_log (to keep CF_TUNNEL_TOKEN out of the logs) and Ansible's no_log
+# wipes the REGISTERED RESULT's content too, not just what gets displayed —
+# so parsing compose_up.stdout/stderr always silently evaluates to empty.
+# Comparing container IDs needs no secrets, so it isn't affected by no_log.
+- name: Capture HA container id before bring-up
+  ansible.builtin.shell: |
+    sg docker -c "docker inspect -f '{{ '{{.Id}}' }}' {{ ha_container_name }}"
+  register: _ha_id_before
+  changed_when: false
+  failed_when: false
+
 # Bring up/update the stack (CLI, no Python SDK required, using CF_TUNNEL_TOKEN as env var)
 - name: Bring up/update (no env file)
   no_log: true
@@ -273,31 +286,21 @@
   register: compose_up
   changed_when: false
 
-- name: Derive changed=true from compose output (stdout+stderr)
-  ansible.builtin.set_fact:
-    _compose_changed: >-
-      {{
-        ('Recreated'  in ((compose_up.stdout|default('')) ~ (compose_up.stderr|default('')))) or
-        ('Recreating' in ((compose_up.stdout|default('')) ~ (compose_up.stderr|default('')))) or
-        ('Created'    in ((compose_up.stdout|default('')) ~ (compose_up.stderr|default('')))) or
-        ('Creating'   in ((compose_up.stdout|default('')) ~ (compose_up.stderr|default('')))) or
-        ('Starting'   in ((compose_up.stdout|default('')) ~ (compose_up.stderr|default(''))))
-      }}
-
-- name: Mark task changed if compose created/recreated/started containers
-  ansible.builtin.debug:
-    msg: "Compose up ran."
-  changed_when: _compose_changed
+- name: Capture HA container id after bring-up
+  ansible.builtin.shell: |
+    sg docker -c "docker inspect -f '{{ '{{.Id}}' }}' {{ ha_container_name }}"
+  register: _ha_id_after
+  changed_when: false
+  failed_when: false
 
 - name: Determine if HA container was (re)created this run
   ansible.builtin.set_fact:
-    _ha_recreated: >-
-      {{
-        ('Recreated'  in ((compose_up.stdout|default('')) ~ (compose_up.stderr|default('')))) or
-        ('Recreating' in ((compose_up.stdout|default('')) ~ (compose_up.stderr|default('')))) or
-        ('Created'    in ((compose_up.stdout|default('')) ~ (compose_up.stderr|default('')))) or
-        ('Creating'   in ((compose_up.stdout|default('')) ~ (compose_up.stderr|default(''))))
-      }}
+    _ha_recreated: "{{ (_ha_id_before.stdout | default('')) != (_ha_id_after.stdout | default('')) }}"
+
+- name: Mark task changed if the HA container was (re)created
+  ansible.builtin.debug:
+    msg: "Compose up ran."
+  changed_when: _ha_recreated
 
 # The official HA image ships site-packages owned by root, but the container
 # runs as runtime_uid (non-root hardening, see docker-compose.yml.j2). A fresh
