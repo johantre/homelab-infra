@@ -621,6 +621,23 @@ sudo ./svc.sh restart
 # Re-run setup-machine.sh if runner installation failed
 ```
 
+### ⚠️ Known Risk: Deploy Always Stops the Stack First {#known-risk-deploy-always-stops-the-stack-first}
+
+**`deploy-ha.yml` begins with a "Stop existing Home Assistant stack" step (`docker compose down`) *before* Ansible runs, and only brings it back up near the end of the playbook.** This is intentional (avoids stale/conflicting containers on redeploy), but it means: if *anything* in between fails — even something unrelated to Home Assistant, like an OS-level `apt` hiccup — the entire stack (HA included, not just the thing you were updating) is left down until you intervene. It does not fail safe.
+
+**Symptoms:** Workflow run fails, and `ssh ubuntu@<target> "docker ps -a"` shows **no containers at all** (not even stopped ones — they were removed by the `down`, not just halted).
+
+**Immediate recovery (restores service in seconds, no data loss):**
+```bash
+# Images and bind-mounted config/data are untouched by `down` — only the
+# containers themselves are gone. A plain `up` recreates them from the
+# existing compose file:
+ssh ubuntu@<target> "cd ~/homelab/target/ha-stack-ansible && docker compose -p ha-stack-ansible up -d"
+```
+Note: if `enable_cloudflared: true`, don't run this manually without `CF_TUNNEL_TOKEN` in the environment — Compose silently defaults it to an empty string, which starts `cloudflared` in a crash loop (not a connectivity problem, just a blank token). Either export the real token first, or just re-run the GitHub Actions workflow instead, which injects it from Secrets.
+
+**Then fix the actual root cause** (check the Ansible log for which task failed — see "Common Issues" #6/#7 in the main [README](README.md#troubleshooting) for the two root causes we've hit so far) **and re-run the workflow** so it completes properly end-to-end.
+
 ### Workflow Fails - No Backup or Seedbox
 
 **Problem:** Workflow completes but bootstrap didn't run

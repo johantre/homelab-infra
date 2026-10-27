@@ -851,6 +851,30 @@ ssh root@<SEEDBOX_IP> "ls -la /root/homeassistant/.storage"
 # or: "🆕 Fresh install - bootstrap ran"
 ```
 
+#### 6. Custom Integration Fails to Install ("Permission Denied")
+
+**Symptoms:** In the HA log: `Unable to install package <pkg>: error: failed to remove file ... Permission denied` followed by `Setup failed for custom integration '<name>': Requirements not found`.
+
+**Reason:** The HA container runs as a non-root `runtime_uid` (security hardening, see `docker-compose.yml.j2`), but the official HA image ships `site-packages` owned by `root`. Every time the container is recreated, that ownership resets, so pip (running as non-root) can't replace a root-owned package file to install a new/updated requirement.
+
+**Fix:** Self-healing — `roles/homeassistant/tasks/main.yml` now chowns `site-packages` to `runtime_uid` and restarts HA whenever the container was (re)created, right after "Bring up/update". No manual action needed. If you still see this, check that task actually ran (`_ha_recreated` must have been true that run).
+
+#### 7. Ansible `apt` Task Fails but `apt-get update` Works Fine on the Host
+
+**Symptoms:** `fatal: [self-hosted]: FAILED! => {"msg": "Failed to update apt cache after 5 retries: "}` — but running `sudo apt-get update` manually on the target succeeds (maybe with a yellow `W:` warning).
+
+**Reason:** A third-party apt repo's signing key (e.g. GitHub CLI's `githubcli-archive-keyring.gpg`) expired or was rotated server-side. Plain `apt-get` tolerates this (falls back to the old index, exits 0); Ansible's `apt` module treats the warning as a hard failure and retries until it gives up — crashing the whole play *before* it ever reaches the "bring up the stack" step. Because `deploy-ha.yml` always stops the stack first (see [Known Risk](DISASTER_RECOVERY.md#known-risk-deploy-always-stops-the-stack-first) in the DR guide), this leaves the entire stack down, not just apt broken.
+
+**Fix:** Self-healing — `roles/homeassistant/tasks/docker-install.yml` now re-fetches the current GitHub CLI signing key from `cli.github.com` before every `apt update`, so a future key rotation can't break this again. If a *different* third-party repo's key expires, apply the same pattern: a `get_url` task re-fetching that repo's keyring before "Refresh apt cache".
+
+#### 8. HACS Download Fails with "Got more than 8190 bytes when reading" / `LineTooLong`
+
+**Symptoms:** HACS update fails with `aiohttp.http_exceptions.LineTooLong: 400, ... Got more than 8190 bytes when reading: b"default-src 'none'; ..."` for a GitHub release asset download.
+
+**Reason:** GitHub started returning an oversized (~9KB+) `Content-Security-Policy` header on release-download redirects. `aiohttp`'s default header-size limit is 8190 bytes, so HA's shared HTTP client (which HACS downloads go through) rejects the response. This is tracked upstream as [hacs/integration#5643](https://github.com/hacs/integration/issues/5643) (open as of 2026-10).
+
+**Fix:** Not something to patch in this repo — HA Core 2026.10.4 raised its own client header limit to 64 KiB (`MAXIMUM_HEADER_SIZE` in `homeassistant/helpers/aiohttp_client.py`), which comfortably covers GitHub's oversized header. Make sure the target is on HA Core `2026.10.4` or later (check with `docker exec homeassistant_ansible cat /usr/src/homeassistant/homeassistant/const.py | grep -i '^__version__'` or just `docker inspect homeassistant_ansible --format '{{.Config.Image}}'`); the HACS download then succeeds without any other change.
+
 ### Debug Ansible Runs
 
 ```bash
