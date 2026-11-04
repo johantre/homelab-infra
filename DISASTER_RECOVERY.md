@@ -68,6 +68,14 @@ flowchart LR
 
 **The principle:** Secrets → HA, always. Never the reverse.
 
+## ⚙️ Forced Integration Settings (non-secret)
+
+Some HACS integration options live only in `.storage/core.config_entries`, which is gitignored (runtime state, not IaC). A seedbox restore or DR restore brings this file back from backup, but a **fresh install** starts the integration on its HACS default — silently reverting any manual tweak made via the UI. These are forced back to the known-good value after every deploy, same mechanism as the secrets above but with a static value instead of a GitHub Secret:
+
+| Setting | Why it's forced | Location in HA | Ansible var |
+|---------|-----------------|---------------|--------------|
+| Solcast Solar `auto_update` | HACS default is `DAYLIGHT` (1) — integration stops polling at sunset, so any decision automation running after dark (e.g. a 22:00 night-charge check) always sees a stale pre-sunset forecast. Forced to `ALL_DAY` (2), which spreads the same daily API call budget across 24h, guaranteeing a poll shortly before such decisions. | `.storage/core.config_entries` (solcast_solar entry's `options.auto_update`) | `ha_solcast_auto_update` |
+
 ### Troubleshooting "bad decrypt" Error
 
 This means the key in Secrets does not match the key used to create the backup.

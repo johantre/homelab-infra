@@ -1,0 +1,39 @@
+---
+# Force the Solcast Solar auto_update mode to ALL_DAY in .storage/core.config_entries.
+# Writes directly to .storage/core.config_entries — run while HA is stopped.
+# Direction: known operational preference → HA (always, all deploy modes)
+# See README.md "Common Issues" for why DAYLIGHT mode is the wrong fit here.
+
+- name: Copy solcast auto_update script to target
+  ansible.builtin.copy:
+    src: set_solcast_autoupdate.py
+    dest: /tmp/set_solcast_autoupdate.py
+    mode: "0644"
+
+- name: Stop HA container for solcast auto_update configuration
+  ansible.builtin.shell: |
+    sg docker -c 'docker stop {{ ha_container_name }}'
+  changed_when: true
+
+- name: Set solcast auto_update mode in .storage/core.config_entries
+  ansible.builtin.shell: |
+    python3 /tmp/set_solcast_autoupdate.py \
+      {{ ha_config_dir | quote }} \
+      {{ ha_solcast_auto_update | quote }}
+  register: solcast_autoupdate_result
+  changed_when: "'->' in solcast_autoupdate_result.stdout"
+
+- name: Show solcast auto_update configuration result
+  ansible.builtin.debug:
+    msg: "{{ solcast_autoupdate_result.stdout }}"
+
+- name: Start HA container after solcast auto_update configuration
+  ansible.builtin.shell: |
+    sg docker -c 'docker start {{ ha_container_name }}'
+  changed_when: true
+
+- name: Clean up script
+  ansible.builtin.file:
+    path: /tmp/set_solcast_autoupdate.py
+    state: absent
+  failed_when: false

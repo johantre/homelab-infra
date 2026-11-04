@@ -477,3 +477,7 @@
   ansible.builtin.include_tasks: configure-long-lived-token.yml
   when: "'ha_target' in group_names"
 
+- name: Force Solcast Solar auto_update mode in HA
+  ansible.builtin.include_tasks: configure-solcast-autoupdate.yml
+  when: "'ha_target' in group_names"
+

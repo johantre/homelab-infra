@@ -29,6 +29,10 @@ ha_container_name: homeassistant_ansible
 ha_seedbox_network: "{{ nanopirouter_lan_network }}"
 ha_backup_encrypt_key: "{{ lookup('env', 'HA_BACKUP_ENCRYPT_KEY') }}"
 ha_long_lived_token: "{{ lookup('env', 'HA_LONG_LIVED_TOKEN_GH_ACTIONS_GIT_SYNC') }}"
+# Solcast Solar auto_update mode (1=sunrise-to-sunset/DAYLIGHT, 2=ALL_DAY). ALL_DAY
+# guarantees a poll shortly before the 22:00 night-charge decision; DAYLIGHT (the
+# HACS default) stops polling at sunset, leaving that decision on a stale forecast.
+ha_solcast_auto_update: 2
 ha_network_mode: host
 ha_host_port: 8123
 
