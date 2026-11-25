@@ -125,7 +125,7 @@ The Solar dashboard monitors the automated battery charging system.
 | **Automation Enabled** | Master switch for the night-charge automation |
 | **Should Charge Tonight** | Calculated binary sensor: `forecast < 12.29 kWh` |
 | **Allow Grid Charging** | Actual inverter switch (controlled by automation) |
-| **Last Decision** | What the automation decided: `charge` or `skip` |
+| **Last Decision** | What the automation decided: `charge`, `no_charge_floor_protection` (partial top-up), or `no_charge` |
 | **Decision For Date** | The date this charging decision applies to (tomorrow) |
 | **Logged Forecast** | Forecast at decision time (for validation) |
 | **Logged Actual** | Actual production logged next day |
@@ -168,8 +168,24 @@ Helps validate forecast accuracy over time.
 
 Explains the decision logic:
 - **Threshold**: 12.29 kWh = 15.36 kWh battery × 0.8 safety factor
-- **Forecast < threshold** → Charge from grid (night rate)
-- **Forecast >= threshold** → Skip charging (solar suffices)
+- **Forecast < threshold** → Charge from grid to 100% (night rate)
+- **Forecast >= threshold** AND SOC >= floor protection target → Skip charging (solar suffices)
+- **Forecast >= threshold** BUT SOC < floor protection target → Partial top-up to the target SOC only (floor protection, see below)
+
+#### Floor Protection
+
+The forecast-based decision above only asks "will tomorrow's sun refill the battery?" — it does not
+check whether *tonight's* starting SOC will survive until sunrise. The Solis inverter has its own,
+independent **Overdischarge SOC** protection (`number.solis_s5_eh1p_overdischarge_soc`, 20%): the
+moment SOC drops to this floor, the inverter stops discharging the battery for household load and
+hands the full load to the grid instead — unplanned, regardless of the night-charge decision.
+
+Floor protection closes this gap: even on a `no_charge` night, if current SOC is below
+`input_number.solar_floor_protection_target_soc` (default 40%), the automation still enables grid
+charging, but with the SoC cutoff set to that target instead of 100% — a partial top-up just large
+enough to clear the floor, not a full night charge. See
+[`docs/SOLAR_BATTERY_AUTOMATION.md`](docs/SOLAR_BATTERY_AUTOMATION.md#floor-protection) for how the
+40% target was derived from real household-load data.
 
 ---
 
